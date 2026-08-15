@@ -28,6 +28,11 @@ impl<T: Copy> AlignedVec<T> {
         }
     }
 
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     pub fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
@@ -73,6 +78,7 @@ mod tests {
     fn test_aligned_vec_32_byte_boundary() {
         let vec: AlignedVec<f32> = AlignedVec::with_capacity_aligned(512, 32);
         assert_eq!(vec.len(), 512);
+        assert_eq!(vec.capacity(), 512);
         assert!(vec.is_aligned_to(32));
     }
 }

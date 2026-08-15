@@ -48,7 +48,8 @@ mod tests {
             ..Default::default()
         };
 
-        for i in 0..FRAME_SAMPLES {
+        // Cast loop upper-bound to usize so `i` indexes [f32] correctly
+        for i in 0..(FRAME_SAMPLES as usize) {
             packet.pcm_data[i] = (i as f32 * 0.01).sin();
         }
 
