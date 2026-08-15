@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "tensor-bridge",
+    "ml-worker",
+]
+resolver = "2"

@@ -1,0 +1,13 @@
+[package]
+name = "tensor-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
+numpy = "0.22"
+libc = "0.2"
+thiserror = "1.0"
+
+[build-dependencies]
+bindgen = "0.69"

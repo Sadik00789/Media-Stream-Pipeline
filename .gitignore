@@ -1,0 +1,35 @@
+# Build Artifacts
+dsp/build/
+*.a
+*.so
+*.dylib
+*.o
+
+# Rust
+crates/target/
+Cargo.lock
+
+# Go
+cmd/gateway/gateway
+cmd/cli-benchmark/cli-benchmark
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+python/.venv/
+python/dist/
+python/*.egg-info/
+
+# Frontend
+web/node_modules/
+web/dist/
+.vite/
+
+# Shared Memory / OS
+/dev/shm/*
+.DS_Store
+*.swp
+*~

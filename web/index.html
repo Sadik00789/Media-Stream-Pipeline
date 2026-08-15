@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Polyglot Audio DSP & ML Pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0c10;
+      --card-bg: #12151c;
+      --card-border: #1f2430;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f3f4f6;
+      --text-dim: #9ca3af;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: rgba(18, 21, 28, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: white;
+      font-size: 1.1rem;
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .status-badge.connected {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    main {
+      flex: 1;
+      padding: 1.5rem 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+    }
+
+    .canvas-container {
+      position: relative;
+      width: 100%;
+      height: 380px;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #1a1e29;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .metric-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+
+    .vad-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      width: fit-content;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+    }
+
+    .vad-indicator.active {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--success);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #1f2430;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      width: 0%;
+      transition: width 0.1s ease;
+    }
+
+    .transcript-box {
+      background: #080a0f;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 1rem;
+      min-height: 120px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.25rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: #2563eb;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .btn.danger {
+      background: var(--danger);
+    }
+
+    .btn.danger:hover {
+      background: #dc2626;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .control-label {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div class="brand-title">Polyglot Media Stream Pipeline</div>
+    </div>
+    <div id="statusBadge" class="status-badge">
+      <div class="status-dot"></div>
+      <span id="statusText">Disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <section style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- Spectrogram Visualizer Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Real-Time SIMD FFT Spectrogram (256 Bins / 60 FPS)</span>
+          <span id="fpsCounter" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">60 FPS</span>
+        </div>
+        <div class="canvas-container">
+          <canvas id="spectrogramCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Telemetry & Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Hardware VAD Status</span>
+          <div id="vadBadge" class="vad-indicator">
+            <span>●</span>
+            <span id="vadText">SILENCE</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <span class="metric-label">VAD Confidence</span>
+          <span id="vadConfValue" class="metric-value">0.00%</span>
+          <div class="progress-bar">
+            <div id="vadProgress" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <span class="metric-label">Embedded ML Confidence</span>
+          <span id="mlConfValue" class="metric-value">0.00%</span>
+          <div class="progress-bar">
+            <div id="mlProgress" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <span class="metric-label">E2E Ingestion Latency</span>
+          <span id="latencyValue" class="metric-value">0.0 ms</span>
+        </div>
+      </div>
+
+      <!-- Streaming Transcript -->
+      <div class="panel">
+        <span class="panel-title">Live Streaming Transcript / ASR Tokens</span>
+        <div id="transcriptBox" class="transcript-box">
+          <span style="color: var(--text-dim);">Connect audio stream to view real-time tokens...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Side Controls Panel -->
+    <aside class="panel" style="height: fit-content;">
+      <span class="panel-title">Stream Controls</span>
+      
+      <button id="toggleMicBtn" class="btn">
+        <span>🎙️</span>
+        <span id="toggleMicText">Start Microphone</span>
+      </button>
+
+      <button id="testToneBtn" class="btn" style="background: #374151;">
+        <span>🔊</span>
+        <span>Inject 1kHz Test Signal</span>
+      </button>
+
+      <div class="control-group" style="margin-top: 1rem;">
+        <div class="control-label">
+          <span>Input Gain</span>
+          <span id="gainValue">1.0x</span>
+        </div>
+        <input id="gainSlider" type="range" min="0.1" max="3.0" step="0.1" value="1.0">
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>Visualizer Color Map</span>
+        </div>
+        <select id="colorMapSelect" style="background: #1f2430; color: white; border: 1px solid var(--card-border); padding: 0.5rem; border-radius: 6px;">
+          <option value="plasma">Cyber Plasma</option>
+          <option value="viridis">Viridis Spectrum</option>
+          <option value="fire">Thermal Fire</option>
+        </select>
+      </div>
+
+      <div style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.5; margin-top: 1rem;">
+        Pipeline: <strong>WebRTC (Go)</strong> ➔ <strong>/dev/shm</strong> ➔ <strong>AVX2 FFT (C11)</strong> ➔ <strong>PyO3 Zero-Copy</strong> ➔ <strong>DataChannel (TS)</strong>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="/src/index.ts"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+# FindSIMD.cmake - Module to detect and configure AVX-512, AVX2, FMA, and ARM NEON SIMD flags
+
+include(CheckCCompilerFlag)
+
+set(SIMD_C_FLAGS "")
+set(SIMD_DEFINITIONS "")
+set(SIMD_EXTENSION "SCALAR")
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i[3-6]86)")
+    # Check AVX-512
+    check_c_compiler_flag("-mavx512f -mavx512dq -mavx512bw -mavx512vl" COMPILER_SUPPORTS_AVX512)
+    if(COMPILER_SUPPORTS_AVX512 AND ENABLE_AVX512)
+        set(SIMD_C_FLAGS "-mavx512f -mavx512dq -mavx512bw -mavx512vl -mfma -ffast-math")
+        set(SIMD_DEFINITIONS "-DENABLE_AVX512=1 -DENABLE_AVX2=1")
+        set(SIMD_EXTENSION "AVX-512")
+        message(STATUS "SIMD: AVX-512 vector extensions enabled.")
+    else()
+        # Check AVX2 and FMA
+        check_c_compiler_flag("-mavx2 -mfma" COMPILER_SUPPORTS_AVX2)
+        if(COMPILER_SUPPORTS_AVX2)
+            set(SIMD_C_FLAGS "-mavx2 -mfma -ffast-math")
+            set(SIMD_DEFINITIONS "-DENABLE_AVX2=1")
+            set(SIMD_EXTENSION "AVX2")
+            message(STATUS "SIMD: AVX2 + FMA vector extensions enabled.")
+        else()
+            message(STATUS "SIMD: x86 scalar fallback.")
+        endif()
+    endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64|ARM64|armv8)")
+    check_c_compiler_flag("-march=armv8-a+simd" COMPILER_SUPPORTS_NEON)
+    if(COMPILER_SUPPORTS_NEON)
+        set(SIMD_C_FLAGS "-march=armv8-a+simd -ffast-math")
+        set(SIMD_DEFINITIONS "-DENABLE_NEON=1")
+        set(SIMD_EXTENSION "NEON")
+        message(STATUS "SIMD: ARM NEON vector extensions enabled.")
+    endif()
+endif()

@@ -1,0 +1,26 @@
+name: SIMD Micro-Benchmarking
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up CMake and Clang
+      run: sudo apt-get update && sudo apt-get install -y cmake clang
+
+    - name: Check Host SIMD Extensions
+      run: bash scripts/check_simd.sh
+
+    - name: Build & Run C DSP Benchmarks
+      run: |
+        cd dsp
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build
+        ./build/test_fft
+        ./build/test_vad

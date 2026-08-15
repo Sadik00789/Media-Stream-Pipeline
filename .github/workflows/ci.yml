@@ -1,0 +1,62 @@
+name: Multi-Language CI Matrix
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Clang and CMake
+      run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: 1. Build and Test C DSP Engine
+      run: |
+        cd dsp
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build
+        ./build/test_fft
+        ./build/test_vad
+
+    - name: 2. Test Rust Crates
+      run: |
+        cargo test --manifest-path crates/Cargo.toml
+
+    - name: 3. Test Python Streaming ML Engine
+      run: |
+        pip install numpy onnxruntime pytest
+        python3 -m pytest python/tests
+
+    - name: 4. Build Go Gateway & Benchmark
+      run: |
+        go build -v ./cmd/gateway
+        go build -v ./cmd/cli-benchmark
+
+    - name: 5. Build TypeScript Frontend
+      run: |
+        cd web
+        npm install
+        npm run build

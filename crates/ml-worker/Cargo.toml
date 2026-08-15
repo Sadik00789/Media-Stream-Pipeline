@@ -1,0 +1,16 @@
+[package]
+name = "ml-worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tensor-bridge = { path = "../tensor-bridge" }
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
+numpy = "0.22"
+nix = { version = "0.29", features = ["mman", "fs"] }
+libc = "0.2"
+clap = { version = "4.5", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1.38", features = ["full"] }
+ctrlc = "3.4"
