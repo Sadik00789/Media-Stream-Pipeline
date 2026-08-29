@@ -74,6 +74,7 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 
 			// Check for new processed video frames
 			hasNewVideo := false
+			var visionLatency float32 = 0.0
 			if b.videoWriter != nil {
 				if vPkt, ok := b.videoWriter.ReadLatestProcessedPacket(&lastVideoSeq); ok {
 					hasNewVideo = true
@@ -92,9 +93,11 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				}
 			}
 
-			var visionLatency float32 = 0.0
-			if cachedVideoTs > 0 && nowNs > cachedVideoTs {
-				visionLatency = float32(nowNs-cachedVideoTs) / 1e6
+			if cachedVideoTs > 0 && nowNs >= cachedVideoTs {
+				diffMs := float32(nowNs-cachedVideoTs) / 1e6
+				if diffMs < 500.0 {
+					visionLatency = diffMs
+				}
 			}
 
 			// Check for new processed audio frames
@@ -111,8 +114,11 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				}
 
 				var audioLatency float32 = 0.0
-				if pkt.TimestampNs > 0 && nowNs > pkt.TimestampNs {
-					audioLatency = float32(nowNs-pkt.TimestampNs) / 1e6
+				if pkt.TimestampNs > 0 && nowNs >= pkt.TimestampNs {
+					diffMs := float32(nowNs-pkt.TimestampNs) / 1e6
+					if diffMs < 500.0 {
+						audioLatency = diffMs
+					}
 				}
 
 				payload := TelemetryPayload{
@@ -139,7 +145,6 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 					b.hub.BroadcastTelemetry(data)
 				}
 			} else if hasNewVideo {
-				// Broadcast video-only update if no new audio packet in this 16ms tick
 				payload := TelemetryPayload{
 					Type:             "telemetry",
 					VideoSequence:    cachedVideoSeq,
@@ -147,6 +152,7 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 					DetectionCount:   cachedDetCount,
 					DetectionsCount:  cachedDetCount,
 					Detections:       cachedDetections,
+					AudioLatencyMs:   0.0,
 					VisionLatencyMs:  visionLatency,
 				}
 

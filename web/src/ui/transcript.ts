@@ -33,16 +33,16 @@ export interface TelemetryData {
 }
 
 export class MetricsRenderer {
-  private vadBadge = document.getElementById('vadBadge');
-  private vadText = document.getElementById('vadText');
-  private vadConfValue = document.getElementById('vadConfValue');
-  private vadProgress = document.getElementById('vadProgress');
-  private mlConfValue = document.getElementById('mlConfValue');
-  private mlProgress = document.getElementById('mlProgress');
-  private latencyValue = document.getElementById('latencyValue');
-  private videoLatencyValue = document.getElementById('videoLatencyValue');
-  private detectionsValue = document.getElementById('detectionsValue');
-  private transcriptBox = document.getElementById('transcriptBox');
+  private vadBadge = document.getElementById('vadBadge') || document.getElementById('vad-badge');
+  private vadText = document.getElementById('vadText') || document.getElementById('vad-text');
+  private vadConfValue = document.getElementById('vadConfValue') || document.getElementById('vad-confidence-val');
+  private vadProgress = document.getElementById('vadProgress') || document.getElementById('vad-confidence-progress');
+  private mlConfValue = document.getElementById('mlConfValue') || document.getElementById('ml-confidence-val') || document.getElementById('ml-confidence');
+  private mlProgress = document.getElementById('mlProgress') || document.getElementById('ml-confidence-progress') || document.getElementById('ml-confidence-bar');
+  private latencyValue = document.getElementById('latencyValue') || document.getElementById('latency-val');
+  private videoLatencyValue = document.getElementById('videoLatencyValue') || document.getElementById('video-latency-val');
+  private detectionsValue = document.getElementById('detectionsValue') || document.getElementById('detections-val');
+  private transcriptBox = document.getElementById('transcriptBox') || document.getElementById('transcript-box') || document.getElementById('liveTranscript');
   private lastTranscript = '';
   private tokenCount = 0;
 
@@ -79,18 +79,16 @@ export class MetricsRenderer {
       this.mlProgress.style.width = `${Math.min(100, Math.max(0, mlConfidence * 100))}%`;
     }
 
-    // 4. Audio Ingestion Latency Estimate
+    // 4. Audio Ingestion Latency (Strict Server Monotonic Time)
     if (this.latencyValue) {
       if (audioLatency !== undefined && audioLatency > 0) {
         this.latencyValue.textContent = `${audioLatency.toFixed(1)} ms`;
-      } else if (data.timestamp_ns) {
-        const nowNs = Date.now() * 1_000_000;
-        const latencyMs = Math.max(0.1, (nowNs - data.timestamp_ns) / 1_000_000);
-        this.latencyValue.textContent = `${latencyMs.toFixed(1)} ms`;
+      } else {
+        this.latencyValue.textContent = `0.0 ms`;
       }
     }
 
-    // 5. Video Detection Count & Latency
+    // 5. Video Detection Count & Latency (Strict Server Monotonic Time)
     if (data.detections !== undefined) {
       if (this.detectionsValue) {
         const count = data.detection_count ?? data.detections_count ?? data.detections.length;
@@ -99,10 +97,8 @@ export class MetricsRenderer {
       if (this.videoLatencyValue) {
         if (videoLatency !== undefined && videoLatency > 0) {
           this.videoLatencyValue.textContent = `${videoLatency.toFixed(1)} ms`;
-        } else if (data.video_timestamp_ns) {
-          const nowNs = Date.now() * 1_000_000;
-          const vLatencyMs = Math.max(0.1, (nowNs - data.video_timestamp_ns) / 1_000_000);
-          this.videoLatencyValue.textContent = `${vLatencyMs.toFixed(1)} ms`;
+        } else {
+          this.videoLatencyValue.textContent = `0.0 ms`;
         }
       }
     }
@@ -117,21 +113,28 @@ export class MetricsRenderer {
     this.lastTranscript = token;
     if (!this.transcriptBox) return;
 
-    // Remove placeholder text on first token
-    if (this.tokenCount === 0) {
+    if (this.tokenCount === 0 || this.transcriptBox.textContent?.includes('Connect audio')) {
       this.transcriptBox.innerHTML = '';
     }
     this.tokenCount++;
 
-    const span = document.createElement('span');
-    span.textContent = ` [${token}] `;
-    span.style.color = '#38bdf8';
-    span.style.fontWeight = '600';
-    span.style.marginRight = '4px';
-    span.style.display = 'inline-block';
-    span.style.transition = 'all 0.2s ease';
+    const badge = document.createElement('span');
+    badge.style.display = 'inline-block';
+    badge.style.padding = '3px 8px';
+    badge.style.margin = '2px 4px';
+    badge.style.borderRadius = '4px';
+    badge.style.background = 'rgba(6, 182, 212, 0.15)';
+    badge.style.border = '1px solid rgba(6, 182, 212, 0.4)';
+    badge.style.color = '#06b6d4';
+    badge.style.fontFamily = 'monospace';
+    badge.style.fontWeight = '600';
+    badge.style.fontSize = '0.85rem';
+    badge.textContent = token;
 
-    this.transcriptBox.appendChild(span);
+    this.transcriptBox.appendChild(badge);
     this.transcriptBox.scrollTop = this.transcriptBox.scrollHeight;
   }
 }
+
+// Alias for TranscriptController
+export { MetricsRenderer as TranscriptController };

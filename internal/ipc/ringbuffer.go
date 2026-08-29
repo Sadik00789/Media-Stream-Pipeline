@@ -68,13 +68,14 @@ func (w *RingBufferWriter) ReadLatestProcessedPacket(lastSeq *uint64) (*AudioFra
 		return nil, false
 	}
 
-	// Look backwards from write head for completed DSP frame
+	// Look backwards from write head for completed ML or DSP frame
 	for i := 0; i < RingCapacity && uint64(i) < wHead; i++ {
 		idx := wHead - 1 - uint64(i)
 		slot := int(idx % uint64(RingCapacity))
 		pkt := &ring.Packets[slot]
 
-		if (pkt.Flags&FlagDspDone) != 0 && pkt.SequenceNumber > *lastSeq {
+		// Require FLAG_ML_DONE or fallback to FLAG_DSP_DONE
+		if (pkt.Flags&(FlagMlDone|FlagDspDone)) != 0 && pkt.SequenceNumber > *lastSeq {
 			*lastSeq = pkt.SequenceNumber
 			return pkt, true
 		}

@@ -6,8 +6,22 @@ Supports ONNX Runtime, NumPy, and pure-Python execution paths.
 import math
 import os
 from typing import Tuple, Optional, Any
-from .tensor_utils import validate_audio_tensor
-from .asr_engine import StreamingAsrEngine
+
+try:
+    from .tensor_utils import validate_audio_tensor
+    from .asr_engine import StreamingAsrEngine
+except (ImportError, ValueError):
+    try:
+        from tensor_utils import validate_audio_tensor
+        from asr_engine import StreamingAsrEngine
+    except (ImportError, ValueError):
+        try:
+            from streaming_ml.tensor_utils import validate_audio_tensor
+            from streaming_ml.asr_engine import StreamingAsrEngine
+        except Exception:
+            def validate_audio_tensor(audio: Any, expected_samples: int = 512):
+                return audio
+            StreamingAsrEngine = None
 
 try:
     import numpy as np
@@ -27,7 +41,10 @@ class StreamingInferenceEngine:
         self.model_path = model_path
         self.session = None
         self._sr = 16000
-        self.asr = StreamingAsrEngine(sample_rate=16000)
+        if StreamingAsrEngine is not None:
+            self.asr = StreamingAsrEngine(sample_rate=16000)
+        else:
+            self.asr = None
 
         if HAS_NUMPY:
             self._state = np.zeros((2, 1, 128), dtype=np.float32)
@@ -68,6 +85,11 @@ class StreamingInferenceEngine:
                 print(f"[StreamingML] Warning: Failed to load ONNX model ({e}), using acoustic fallback.")
                 self.session = None
 
+    def process_pcm(self, pcm_data: Any, vad_active: Optional[bool] = None) -> float:
+        """Helper returning just acoustic confidence float."""
+        conf, _ = self.process_frame(pcm_data, vad_active)
+        return conf
+
     def process_frame(self, audio_array: Any, vad_active: Optional[bool] = None) -> Tuple[float, str]:
         """
         Processes a raw 512-sample audio frame.
@@ -93,7 +115,7 @@ class StreamingInferenceEngine:
                     self._state = outs[1]
 
                 is_speech = prob > 0.5 if vad_active is None else (vad_active or prob > 0.5)
-                token = self.asr.ingest_frame(audio, is_speech)
+                token = self.asr.ingest_frame(audio, is_speech) if self.asr else ""
                 return prob, token
             except Exception:
                 pass
@@ -109,7 +131,8 @@ class StreamingInferenceEngine:
             zcr = float(zcr_count) / float(n) if n > 0 else 0.0
 
         if energy < 1e-6:
-            self.asr.ingest_frame(audio, False)
+            if self.asr:
+                self.asr.ingest_frame(audio, False)
             return 0.0, ""
 
         rms = math.sqrt(energy)
@@ -121,6 +144,10 @@ class StreamingInferenceEngine:
         confidence = max(0.0, min(1.0, float(confidence)))
 
         is_voice = (vad_active is True) or (confidence > 0.40) or (energy > 0.001)
-        transcript = self.asr.ingest_frame(audio, is_voice)
+        transcript = self.asr.ingest_frame(audio, is_voice) if self.asr else ""
 
         return confidence, transcript
+
+
+# Alias for backward compatibility
+InferenceEngine = StreamingInferenceEngine

@@ -1,41 +1,78 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PySequence, PyTuple};
+use std::path::PathBuf;
 use tensor_bridge::ffi::DetectionBox;
 use tensor_bridge::pyo3_bindings::{as_pyarray_video, slice_to_pylist};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub struct PyRuntimeManager {
     engine_obj: Py<PyAny>,
 }
 
 impl PyRuntimeManager {
-    pub fn init(model_path: &str) -> Result<Self, String> {
+    pub fn init(_model_path: &str) -> Result<Self, String> {
         info!("Initializing embedded Python Audio ML runtime (PyO3)...");
 
         Python::with_gil(|py| {
-            // Add python/src to sys.path
             let sys = py.import_bound("sys").map_err(|e| e.to_string())?;
             let path: Bound<'_, PyList> = sys.getattr("path")
                 .map_err(|e| e.to_string())?
                 .extract()
                 .map_err(|e| e.to_string())?;
-            
-            path.insert(0, "python/src").map_err(|e| e.to_string())?;
-            path.insert(0, "../../python/src").map_err(|e| e.to_string())?;
 
-            // Import streaming_ml.inference module
-            let ml_module = py.import_bound("streaming_ml.inference")
-                .map_err(|e| format!("Failed to import streaming_ml.inference: {}", e))?;
+            let mut candidates = vec![
+                PathBuf::from("python/src"),
+                PathBuf::from("../../python/src"),
+                PathBuf::from("../python/src"),
+                PathBuf::from("python/src/streaming_ml"),
+                PathBuf::from("../../python/src/streaming_ml"),
+            ];
 
-            let engine_class = ml_module.getattr("StreamingInferenceEngine")
-                .map_err(|e| format!("Failed to get StreamingInferenceEngine class: {}", e))?;
+            if let Ok(cwd) = std::env::current_dir() {
+                candidates.push(cwd.join("python/src"));
+                candidates.push(cwd.join("../../python/src"));
+                candidates.push(cwd.join("../python/src"));
+                candidates.push(cwd.join("python/src/streaming_ml"));
+                candidates.push(cwd.join("../../python/src/streaming_ml"));
+                if let Some(parent) = cwd.parent() {
+                    candidates.push(parent.join("python/src"));
+                    candidates.push(parent.join("python/src/streaming_ml"));
+                    if let Some(p2) = parent.parent() {
+                        candidates.push(p2.join("python/src"));
+                        candidates.push(p2.join("python/src/streaming_ml"));
+                    }
+                }
+            }
 
-            let kwargs = PyDict::new_bound(py);
-            kwargs.set_item("model_path", model_path)
-                .map_err(|e| e.to_string())?;
+            for cand in candidates {
+                if cand.exists() {
+                    if let Ok(canon) = cand.canonicalize() {
+                        let _ = path.insert(0, canon.to_string_lossy().to_string());
+                    } else {
+                        let _ = path.insert(0, cand.to_string_lossy().to_string());
+                    }
+                }
+            }
 
-            let instance = engine_class.call((), Some(&kwargs))
-                .map_err(|e| format!("Failed to instantiate StreamingInferenceEngine: {}", e))?;
+            // Attempt importing as module or direct script with clear traceback logging
+            let module = py.import_bound("streaming_ml.asr_engine")
+                .or_else(|_| py.import_bound("asr_engine"))
+                .or_else(|_| py.import_bound("streaming_ml.inference"))
+                .or_else(|_| py.import_bound("inference"))
+                .map_err(|e| {
+                    error!("Python audio ML import failure: {:?}", e);
+                    format!("Failed to import audio ML module: {:?}", e)
+                })?;
+
+            let instance = if let Ok(engine_class) = module.getattr("StreamingAsrEngine") {
+                engine_class.call0()
+                    .map_err(|e| format!("Failed to call StreamingAsrEngine(): {:?}", e))?
+            } else if let Ok(engine_class) = module.getattr("StreamingInferenceEngine") {
+                engine_class.call0()
+                    .map_err(|e| format!("Failed to call StreamingInferenceEngine(): {:?}", e))?
+            } else {
+                return Err("Failed to find engine class in audio ML module".to_string());
+            };
 
             info!("Embedded Python Audio ML Runtime successfully initialized");
             Ok(Self {
@@ -63,7 +100,7 @@ impl PyRuntimeManager {
                     }
                 }
                 Err(e) => {
-                    warn!("Python audio inference execution error: {}", e);
+                    warn!("Python audio inference error: {}", e);
                     (0.0, String::new())
                 }
             }
@@ -80,26 +117,57 @@ impl VisionRuntimeManager {
         info!("Initializing embedded Python Vision ML runtime (PyO3)...");
 
         Python::with_gil(|py| {
-            // Add python/src to sys.path
             let sys = py.import_bound("sys").map_err(|e| e.to_string())?;
             let path: Bound<'_, PyList> = sys.getattr("path")
                 .map_err(|e| e.to_string())?
                 .extract()
                 .map_err(|e| e.to_string())?;
             
-            path.insert(0, "python/src").map_err(|e| e.to_string())?;
-            path.insert(0, "../../python/src").map_err(|e| e.to_string())?;
+            let mut candidates = vec![
+                PathBuf::from("python/src"),
+                PathBuf::from("../../python/src"),
+                PathBuf::from("../python/src"),
+                PathBuf::from("python/src/streaming_ml"),
+                PathBuf::from("../../python/src/streaming_ml"),
+            ];
+            if let Ok(cwd) = std::env::current_dir() {
+                candidates.push(cwd.join("python/src"));
+                candidates.push(cwd.join("../../python/src"));
+                candidates.push(cwd.join("../python/src"));
+                candidates.push(cwd.join("python/src/streaming_ml"));
+                candidates.push(cwd.join("../../python/src/streaming_ml"));
+                if let Some(parent) = cwd.parent() {
+                    candidates.push(parent.join("python/src"));
+                    candidates.push(parent.join("python/src/streaming_ml"));
+                    if let Some(p2) = parent.parent() {
+                        candidates.push(p2.join("python/src"));
+                        candidates.push(p2.join("python/src/streaming_ml"));
+                    }
+                }
+            }
 
-            // Import streaming_ml.vision_engine module
+            for cand in candidates {
+                if cand.exists() {
+                    if let Ok(canon) = cand.canonicalize() {
+                        let _ = path.insert(0, canon.to_string_lossy().to_string());
+                    } else {
+                        let _ = path.insert(0, cand.to_string_lossy().to_string());
+                    }
+                }
+            }
+
             let vision_module = py.import_bound("streaming_ml.vision_engine")
-                .map_err(|e| format!("Failed to import streaming_ml.vision_engine: {}", e))?;
+                .or_else(|_| py.import_bound("vision_engine"))
+                .map_err(|e| {
+                    error!("Python vision ML import failure: {:?}", e);
+                    format!("Failed to import streaming_ml.vision_engine: {:?}", e)
+                })?;
 
             let engine_class = vision_module.getattr("VisionEngine")
                 .map_err(|e| format!("Failed to get VisionEngine class: {}", e))?;
 
             let kwargs = PyDict::new_bound(py);
-            kwargs.set_item("model_path", model_path)
-                .map_err(|e| e.to_string())?;
+            let _ = kwargs.set_item("model_path", model_path);
 
             let instance = engine_class.call((), Some(&kwargs))
                 .map_err(|e| format!("Failed to instantiate VisionEngine: {}", e))?;

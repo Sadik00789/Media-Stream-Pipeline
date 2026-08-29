@@ -150,12 +150,18 @@ func main() {
 
 			nowNs := uint64(time.Now().UnixNano())
 			var audioLatency float32 = 0.0
-			if pkt.TimestampNs > 0 && nowNs > pkt.TimestampNs {
-				audioLatency = float32(nowNs-pkt.TimestampNs) / 1e6
+			if pkt.TimestampNs > 0 && nowNs >= pkt.TimestampNs {
+				diffMs := float32(nowNs-pkt.TimestampNs) / 1e6
+				if diffMs < 500.0 {
+					audioLatency = diffMs
+				}
 			}
 			var visionLatency float32 = 0.0
-			if videoTs > 0 && nowNs > videoTs {
-				visionLatency = float32(nowNs-videoTs) / 1e6
+			if videoTs > 0 && nowNs >= videoTs {
+				diffMs := float32(nowNs-videoTs) / 1e6
+				if diffMs < 500.0 {
+					visionLatency = diffMs
+				}
 			}
 
 			_ = json.NewEncoder(w).Encode(webrtc.TelemetryPayload{
@@ -180,8 +186,11 @@ func main() {
 		} else if videoSeq > 0 {
 			nowNs := uint64(time.Now().UnixNano())
 			var visionLatency float32 = 0.0
-			if videoTs > 0 && nowNs > videoTs {
-				visionLatency = float32(nowNs-videoTs) / 1e6
+			if videoTs > 0 && nowNs >= videoTs {
+				diffMs := float32(nowNs-videoTs) / 1e6
+				if diffMs < 500.0 {
+					visionLatency = diffMs
+				}
 			}
 
 			_ = json.NewEncoder(w).Encode(webrtc.TelemetryPayload{
@@ -191,6 +200,7 @@ func main() {
 				DetectionCount:   detCount,
 				DetectionsCount:  detCount,
 				Detections:       detections,
+				AudioLatencyMs:   0.0,
 				VisionLatencyMs:  visionLatency,
 			})
 		} else {

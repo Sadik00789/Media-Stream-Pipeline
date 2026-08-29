@@ -17,18 +17,14 @@ export class VideoCaptureProcessor {
     this.videoEl = videoElement;
     this.onFrameCallback = onFrame || null;
 
-    // 1. Request 640x480 @ 30 FPS video + audio
+    // 1. Request 640x480 @ 30 FPS video only
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 640 },
         height: { ideal: 480 },
         frameRate: { ideal: 30 },
       },
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
+      audio: false, // Prevent audio device conflict with AudioCaptureProcessor
     });
 
     this.videoEl.srcObject = this.mediaStream;

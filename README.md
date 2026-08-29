@@ -13,10 +13,10 @@ An ultra-low latency (**<20ms audio / <33ms video**), zero-copy, polyglot dual-t
 
 ## 📸 Live Pipeline Showcase
 
-### 1. Dual-Track Live Streaming Dashboard
-Real-time 60 FPS decibel spectrogram waterfall on the left, live 640x480 video camera feed with cyan/purple bounding box HUD overlay on the right, active hardware VAD, and real-time speech tokens.
+### Real-Time Dual-Track Audio + Video HUD Dashboard
+Real-time 60 FPS decibel spectrogram waterfall on the left, live 640x480 RGB24 video camera feed with neon bounding box HUD overlay on the right, active hardware VAD (96.8%), embedded ML confidence (85.5%), sub-2ms audio latency, and live streaming phonetic ASR tokens.
 
-![Dual-Track Audio & Video Dashboard](docs/images/dashboard_active_speech.png)
+![Real-Time Polyglot Dual-Track Audio + Video Pipeline Dashboard](docs/images/dashboard_dual_track_live.png)
 
 ---
 

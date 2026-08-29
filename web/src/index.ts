@@ -20,6 +20,11 @@ class App {
   private toneInterval: number | null = null;
   private videoTestInterval: number | null = null;
 
+  private isSendingAudio = false;
+  private isSendingVideo = false;
+  private isSendingTone = false;
+  private isSendingSynthVideo = false;
+
   private statusBadge = document.getElementById('statusBadge');
   private statusText = document.getElementById('statusText');
   private videoElement = document.getElementById('cameraVideo') as HTMLVideoElement;
@@ -54,15 +59,18 @@ class App {
 
     try {
       this.ws = new WebSocket(wsUrl);
+      this.ws.binaryType = 'arraybuffer';
       this.ws.onopen = () => {
         this.updateStatus('Telemetry Connected (60 FPS)', true);
       };
 
       this.ws.onmessage = (e) => {
         try {
-          const payload: TelemetryData = JSON.parse(e.data);
-          if (payload.type === 'telemetry') {
-            this.handleTelemetry(payload);
+          if (typeof e.data === 'string') {
+            const payload: TelemetryData = JSON.parse(e.data);
+            if (payload.type === 'telemetry') {
+              this.handleTelemetry(payload);
+            }
           }
         } catch {
           // ignore non-json
@@ -154,11 +162,21 @@ class App {
       }
       try {
         await this.audioProcessor.start((samples) => {
-          fetch('/api/pcm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ samples: Array.from(samples) }),
-          }).catch(() => {});
+          if (this.isSendingAudio) return;
+          this.isSendingAudio = true;
+
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'pcm', samples: Array.from(samples) }));
+            this.isSendingAudio = false;
+          } else {
+            fetch('/api/pcm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ samples: Array.from(samples) }),
+            }).finally(() => {
+              this.isSendingAudio = false;
+            });
+          }
         });
         this.isAudioStreaming = true;
         this.updateStatus('Microphone Live (16kHz PCM)', true);
@@ -180,12 +198,21 @@ class App {
       }
       try {
         await this.videoProcessor.start(this.videoElement, (pixels) => {
-          // Send raw RGB24 binary frame directly to Go Gateway /dev/shm
-          fetch('/api/video', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: new Blob([pixels.buffer as ArrayBuffer]),
-          }).catch(() => {});
+          if (this.isSendingVideo) return;
+          this.isSendingVideo = true;
+
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(pixels.buffer);
+            this.isSendingVideo = false;
+          } else {
+            fetch('/api/video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/octet-stream' },
+              body: new Blob([pixels.buffer as ArrayBuffer]),
+            }).finally(() => {
+              this.isSendingVideo = false;
+            });
+          }
         });
         this.isVideoStreaming = true;
         this.updateStatus('Camera Live (640x480 RGB24 @ 30 FPS)', true);
@@ -210,11 +237,21 @@ class App {
     }
 
     this.toneInterval = window.setInterval(() => {
-      fetch('/api/pcm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ samples: Array.from(samples) }),
-      }).catch(() => {});
+      if (this.isSendingTone) return;
+      this.isSendingTone = true;
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'pcm', samples: Array.from(samples) }));
+        this.isSendingTone = false;
+      } else {
+        fetch('/api/pcm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ samples: Array.from(samples) }),
+        }).finally(() => {
+          this.isSendingTone = false;
+        });
+      }
     }, 32);
   }
 
@@ -230,6 +267,9 @@ class App {
     let frameNum = 0;
 
     this.videoTestInterval = window.setInterval(() => {
+      if (this.isSendingSynthVideo) return;
+      this.isSendingSynthVideo = true;
+
       frameNum++;
       const rgb = new Uint8Array(640 * 480 * 3);
 
@@ -252,11 +292,18 @@ class App {
         }
       }
 
-      fetch('/api/video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: new Blob([rgb.buffer as ArrayBuffer]),
-      }).catch(() => {});
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(rgb.buffer);
+        this.isSendingSynthVideo = false;
+      } else {
+        fetch('/api/video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: new Blob([rgb.buffer as ArrayBuffer]),
+        }).finally(() => {
+          this.isSendingSynthVideo = false;
+        });
+      }
     }, 33);
   }
 
