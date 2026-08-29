@@ -148,19 +148,27 @@ func main() {
 				spectrogramSlice[i] = pkt.Spectrogram[i]
 			}
 
-			nowNs := uint64(time.Now().UnixNano())
+			currentNowNs := uint64(time.Now().UnixNano())
 			var audioLatency float32 = 0.0
-			if pkt.TimestampNs > 0 && nowNs >= pkt.TimestampNs {
-				diffMs := float32(nowNs-pkt.TimestampNs) / 1e6
-				if diffMs < 500.0 {
-					audioLatency = diffMs
+			if pkt.TimestampNs > 0 {
+				if currentNowNs >= pkt.TimestampNs {
+					diffMs := float32(currentNowNs-pkt.TimestampNs) / 1e6
+					if diffMs < 500.0 {
+						audioLatency = diffMs
+					}
+				} else {
+					audioLatency = 1.0
 				}
 			}
 			var visionLatency float32 = 0.0
-			if videoTs > 0 && nowNs >= videoTs {
-				diffMs := float32(nowNs-videoTs) / 1e6
-				if diffMs < 500.0 {
-					visionLatency = diffMs
+			if videoTs > 0 {
+				if currentNowNs >= videoTs {
+					diffMs := float32(currentNowNs-videoTs) / 1e6
+					if diffMs < 500.0 {
+						visionLatency = diffMs
+					}
+				} else {
+					visionLatency = 1.0
 				}
 			}
 
@@ -184,12 +192,16 @@ func main() {
 				VisionLatencyMs:  visionLatency,
 			})
 		} else if videoSeq > 0 {
-			nowNs := uint64(time.Now().UnixNano())
+			currentNowNs := uint64(time.Now().UnixNano())
 			var visionLatency float32 = 0.0
-			if videoTs > 0 && nowNs >= videoTs {
-				diffMs := float32(nowNs-videoTs) / 1e6
-				if diffMs < 500.0 {
-					visionLatency = diffMs
+			if videoTs > 0 {
+				if currentNowNs >= videoTs {
+					diffMs := float32(currentNowNs-videoTs) / 1e6
+					if diffMs < 500.0 {
+						visionLatency = diffMs
+					}
+				} else {
+					visionLatency = 1.0
 				}
 			}
 

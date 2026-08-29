@@ -26,8 +26,8 @@ type TelemetryPayload struct {
 	DetectionCount   uint32             `json:"detection_count,omitempty"`
 	DetectionsCount  uint32             `json:"detections_count,omitempty"`
 	Detections       []ipc.DetectionBox `json:"detections,omitempty"`
-	AudioLatencyMs   float32            `json:"audio_latency_ms,omitempty"`
-	VisionLatencyMs  float32            `json:"vision_latency_ms,omitempty"`
+	AudioLatencyMs   float32            `json:"audio_latency_ms"`
+	VisionLatencyMs  float32            `json:"vision_latency_ms"`
 }
 
 type TelemetryBroadcaster struct {
@@ -70,8 +70,6 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				continue
 			}
 
-			nowNs := uint64(time.Now().UnixNano())
-
 			// Check for new processed video frames
 			hasNewVideo := false
 			var visionLatency float32 = 0.0
@@ -93,10 +91,15 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				}
 			}
 
-			if cachedVideoTs > 0 && nowNs >= cachedVideoTs {
-				diffMs := float32(nowNs-cachedVideoTs) / 1e6
-				if diffMs < 500.0 {
-					visionLatency = diffMs
+			currentNowNs := uint64(time.Now().UnixNano())
+			if cachedVideoTs > 0 {
+				if currentNowNs >= cachedVideoTs {
+					diffMs := float32(currentNowNs-cachedVideoTs) / 1e6
+					if diffMs < 500.0 {
+						visionLatency = diffMs
+					}
+				} else {
+					visionLatency = 1.0 // sub-millisecond receipt
 				}
 			}
 
@@ -114,10 +117,14 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				}
 
 				var audioLatency float32 = 0.0
-				if pkt.TimestampNs > 0 && nowNs >= pkt.TimestampNs {
-					diffMs := float32(nowNs-pkt.TimestampNs) / 1e6
-					if diffMs < 500.0 {
-						audioLatency = diffMs
+				if pkt.TimestampNs > 0 {
+					if currentNowNs >= pkt.TimestampNs {
+						diffMs := float32(currentNowNs-pkt.TimestampNs) / 1e6
+						if diffMs < 500.0 {
+							audioLatency = diffMs
+						}
+					} else {
+						audioLatency = 1.0
 					}
 				}
 
