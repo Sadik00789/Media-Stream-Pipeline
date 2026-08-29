@@ -37,14 +37,16 @@ class StreamingAsrEngine:
                 self.history.pop(0)
 
             # Produce progressive streaming tokens based on continuous speech duration
-            if self.speech_frames == 5:
+            if self.speech_frames == 3:
                 return "voice_detected"
-            elif self.speech_frames == 15:
-                return "streaming_audio"
-            elif self.speech_frames == 30:
-                return "ml_pipeline_active"
-            elif self.speech_frames % 50 == 0:
-                return "continuous_speech"
+            elif self.speech_frames == 8:
+                return "speech_stream"
+            elif self.speech_frames == 16:
+                return "ml_active"
+            elif self.speech_frames == 28:
+                return "continuous_audio"
+            elif self.speech_frames > 28 and self.speech_frames % 20 == 0:
+                return "streaming_token"
             else:
                 return ""
         else:

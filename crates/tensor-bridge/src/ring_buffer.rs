@@ -46,6 +46,14 @@ impl ShmRingBufferReader {
         }
     }
 
+    /// Obtains a direct mutable pointer to a packet in shared memory without copying
+    #[inline]
+    pub fn get_packet_mut(&mut self, slot: usize) -> &mut AudioFramePacket {
+        unsafe {
+            &mut (*self.raw).packets[slot % (SHM_RING_CAPACITY as usize)]
+        }
+    }
+
     /// Read next available packet with automatic overrun recovery
     pub fn poll_next_packet(&mut self) -> Option<&mut AudioFramePacket> {
         let mut r = self.read_head();
@@ -122,6 +130,14 @@ impl ShmVideoRingBufferReader {
         unsafe {
             let ptr = std::ptr::addr_of_mut!((*self.raw).read_head) as *mut AtomicU64;
             (*ptr).fetch_add(1, Ordering::AcqRel)
+        }
+    }
+
+    /// Obtains a direct mutable pointer to a video packet in shared memory without copying
+    #[inline]
+    pub fn get_packet_mut(&mut self, slot: usize) -> &mut VideoFramePacket {
+        unsafe {
+            &mut (*self.raw).packets[slot % (VIDEO_RING_CAPACITY as usize)]
         }
     }
 

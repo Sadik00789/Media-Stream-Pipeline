@@ -148,27 +148,50 @@ func main() {
 				spectrogramSlice[i] = pkt.Spectrogram[i]
 			}
 
+			nowNs := uint64(time.Now().UnixNano())
+			var audioLatency float32 = 0.0
+			if pkt.TimestampNs > 0 && nowNs > pkt.TimestampNs {
+				audioLatency = float32(nowNs-pkt.TimestampNs) / 1e6
+			}
+			var visionLatency float32 = 0.0
+			if videoTs > 0 && nowNs > videoTs {
+				visionLatency = float32(nowNs-videoTs) / 1e6
+			}
+
 			_ = json.NewEncoder(w).Encode(webrtc.TelemetryPayload{
 				Type:             "telemetry",
 				Sequence:         pkt.SequenceNumber,
+				SequenceNumber:   pkt.SequenceNumber,
 				TimestampNs:      pkt.TimestampNs,
 				VadActive:        pkt.VadActive != 0,
 				VadConfidence:    pkt.VadConfidence,
 				MlConfidence:     pkt.MlConfidence,
+				MlTranscript:     transcript,
 				Transcript:       transcript,
 				Spectrogram:      spectrogramSlice,
 				VideoSequence:    videoSeq,
 				VideoTimestampNs: videoTs,
 				DetectionCount:   detCount,
+				DetectionsCount:  detCount,
 				Detections:       detections,
+				AudioLatencyMs:   audioLatency,
+				VisionLatencyMs:  visionLatency,
 			})
 		} else if videoSeq > 0 {
+			nowNs := uint64(time.Now().UnixNano())
+			var visionLatency float32 = 0.0
+			if videoTs > 0 && nowNs > videoTs {
+				visionLatency = float32(nowNs-videoTs) / 1e6
+			}
+
 			_ = json.NewEncoder(w).Encode(webrtc.TelemetryPayload{
 				Type:             "telemetry",
 				VideoSequence:    videoSeq,
 				VideoTimestampNs: videoTs,
 				DetectionCount:   detCount,
+				DetectionsCount:  detCount,
 				Detections:       detections,
+				VisionLatencyMs:  visionLatency,
 			})
 		} else {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "waiting"})

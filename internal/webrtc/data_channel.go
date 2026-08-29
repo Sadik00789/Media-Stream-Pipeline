@@ -13,16 +13,21 @@ import (
 type TelemetryPayload struct {
 	Type             string             `json:"type"`
 	Sequence         uint64             `json:"seq"`
+	SequenceNumber   uint64             `json:"sequence_number"`
 	TimestampNs      uint64             `json:"timestamp_ns"`
 	VadActive        bool               `json:"vad_active"`
 	VadConfidence    float32            `json:"vad_confidence"`
 	MlConfidence     float32            `json:"ml_confidence"`
+	MlTranscript     string             `json:"ml_transcript"`
 	Transcript       string             `json:"transcript"`
-	Spectrogram      []float32          `json:"spectrogram"`
+	Spectrogram      []float32          `json:"spectrogram,omitempty"`
 	VideoSequence    uint64             `json:"video_seq,omitempty"`
 	VideoTimestampNs uint64             `json:"video_timestamp_ns,omitempty"`
 	DetectionCount   uint32             `json:"detection_count,omitempty"`
+	DetectionsCount  uint32             `json:"detections_count,omitempty"`
 	Detections       []ipc.DetectionBox `json:"detections,omitempty"`
+	AudioLatencyMs   float32            `json:"audio_latency_ms,omitempty"`
+	VisionLatencyMs  float32            `json:"vision_latency_ms,omitempty"`
 }
 
 type TelemetryBroadcaster struct {
@@ -65,6 +70,8 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				continue
 			}
 
+			nowNs := uint64(time.Now().UnixNano())
+
 			// Check for new processed video frames
 			hasNewVideo := false
 			if b.videoWriter != nil {
@@ -85,6 +92,11 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 				}
 			}
 
+			var visionLatency float32 = 0.0
+			if cachedVideoTs > 0 && nowNs > cachedVideoTs {
+				visionLatency = float32(nowNs-cachedVideoTs) / 1e6
+			}
+
 			// Check for new processed audio frames
 			if pkt, ok := b.audioWriter.ReadLatestProcessedPacket(&lastAudioSeq); ok {
 				transcriptLen := bytes.IndexByte(pkt.MlTranscript[:], 0)
@@ -98,19 +110,29 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 					spectrogramSlice[i] = pkt.Spectrogram[i]
 				}
 
+				var audioLatency float32 = 0.0
+				if pkt.TimestampNs > 0 && nowNs > pkt.TimestampNs {
+					audioLatency = float32(nowNs-pkt.TimestampNs) / 1e6
+				}
+
 				payload := TelemetryPayload{
 					Type:             "telemetry",
 					Sequence:         pkt.SequenceNumber,
+					SequenceNumber:   pkt.SequenceNumber,
 					TimestampNs:      pkt.TimestampNs,
 					VadActive:        pkt.VadActive != 0,
 					VadConfidence:    pkt.VadConfidence,
 					MlConfidence:     pkt.MlConfidence,
+					MlTranscript:     transcript,
 					Transcript:       transcript,
 					Spectrogram:      spectrogramSlice,
 					VideoSequence:    cachedVideoSeq,
 					VideoTimestampNs: cachedVideoTs,
 					DetectionCount:   cachedDetCount,
+					DetectionsCount:  cachedDetCount,
 					Detections:       cachedDetections,
+					AudioLatencyMs:   audioLatency,
+					VisionLatencyMs:  visionLatency,
 				}
 
 				if data, err := json.Marshal(payload); err == nil {
@@ -123,7 +145,9 @@ func (b *TelemetryBroadcaster) StartBroadcasting(ctx context.Context) {
 					VideoSequence:    cachedVideoSeq,
 					VideoTimestampNs: cachedVideoTs,
 					DetectionCount:   cachedDetCount,
+					DetectionsCount:  cachedDetCount,
 					Detections:       cachedDetections,
+					VisionLatencyMs:  visionLatency,
 				}
 
 				if data, err := json.Marshal(payload); err == nil {

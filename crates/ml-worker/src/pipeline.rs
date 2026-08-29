@@ -30,7 +30,8 @@ impl AudioPipeline {
         // 2. Embedded Python ML Runtime (zero-copy view)
         if let Some(ref py_rt) = self.py_runtime {
             let pcm = packet.pcm_data;
-            let (confidence, transcript) = py_rt.process_frame(&pcm);
+            let vad_active = packet.vad_active != 0;
+            let (confidence, transcript) = py_rt.process_frame(&pcm, vad_active);
             packet.ml_confidence = confidence;
 
             // Copy transcript string into fixed-size buffer safely

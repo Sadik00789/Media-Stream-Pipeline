@@ -12,6 +12,8 @@ class App {
   private overlay: DetectionOverlayRenderer;
   private metrics = new MetricsRenderer();
 
+  private pc: RTCPeerConnection | null = null;
+  private dc: RTCDataChannel | null = null;
   private ws: WebSocket | null = null;
   private isAudioStreaming = false;
   private isVideoStreaming = false;
@@ -31,6 +33,7 @@ class App {
 
     this.initControls();
     this.initWebSocket();
+    this.initWebRTC();
     this.startRenderLoop();
   }
 
@@ -52,7 +55,7 @@ class App {
     try {
       this.ws = new WebSocket(wsUrl);
       this.ws.onopen = () => {
-        this.updateStatus('Telemetry Stream Connected (60 FPS)', true);
+        this.updateStatus('Telemetry Connected (60 FPS)', true);
       };
 
       this.ws.onmessage = (e) => {
@@ -71,6 +74,61 @@ class App {
       };
     } catch (err) {
       console.warn('[WebSocket] Connection error:', err);
+    }
+  }
+
+  private async initWebRTC() {
+    try {
+      this.pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+
+      this.dc = this.pc.createDataChannel('telemetry', { ordered: false });
+      this.dc.onopen = () => {
+        this.updateStatus('WebRTC DataChannel Connected (60 FPS)', true);
+      };
+
+      this.dc.onmessage = (e) => {
+        try {
+          const payload: TelemetryData = JSON.parse(e.data);
+          if (payload.type === 'telemetry') {
+            this.handleTelemetry(payload);
+          }
+        } catch {
+          // ignore
+        }
+      };
+
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
+
+      await new Promise<void>((resolve) => {
+        if (this.pc!.iceGatheringState === 'complete') {
+          resolve();
+        } else {
+          const checkState = () => {
+            if (this.pc!.iceGatheringState === 'complete') {
+              this.pc!.removeEventListener('icegatheringstatechange', checkState);
+              resolve();
+            }
+          };
+          this.pc!.addEventListener('icegatheringstatechange', checkState);
+          setTimeout(resolve, 1000);
+        }
+      });
+
+      const resp = await fetch('/api/offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sdp: this.pc.localDescription?.sdp || offer.sdp }),
+      });
+
+      if (resp.ok) {
+        const { sdp: answerSDP } = await resp.json();
+        await this.pc.setRemoteDescription({ type: 'answer', sdp: answerSDP });
+      }
+    } catch (err) {
+      console.warn('[WebRTC] Handshake fallback to WebSocket:', err);
     }
   }
 

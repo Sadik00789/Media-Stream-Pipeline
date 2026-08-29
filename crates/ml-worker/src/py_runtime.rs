@@ -44,13 +44,13 @@ impl PyRuntimeManager {
         })
     }
 
-    /// Executes ML inference on a raw slice of PCM audio
-    pub fn process_frame(&self, pcm_data: &[f32]) -> (f32, String) {
+    /// Executes ML inference on a raw slice of PCM audio with VAD context
+    pub fn process_frame(&self, pcm_data: &[f32], vad_active: bool) -> (f32, String) {
         Python::with_gil(|py| {
             let py_list = slice_to_pylist(py, pcm_data);
             let engine = self.engine_obj.bind(py);
 
-            match engine.call_method1("process_frame", (py_list,)) {
+            match engine.call_method1("process_frame", (py_list, vad_active)) {
                 Ok(result) => {
                     if let Ok(tuple) = result.extract::<Bound<'_, PyTuple>>() {
                         let conf: f32 = tuple.get_item(0).and_then(|v| v.extract()).unwrap_or(0.0);
