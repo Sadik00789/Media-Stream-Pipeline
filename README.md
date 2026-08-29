@@ -22,68 +22,76 @@ Real-time 60 FPS decibel spectrogram waterfall on the left, live 640x480 RGB24 v
 
 ## 1. Polyglot Architecture & Zero-Copy Data Plane
 
-```mermaid
-flowchart TB
-    %% Client Layer
-    subgraph Client ["Client Presentation Layer (TypeScript / Vite)"]
-        direction LR
-        Mic["🎙️ 16kHz PCM Mic Stream"]
-        Cam["📹 640x480 @ 30 FPS RGB Stream"]
-        HUD["⚡ 60 FPS Spectrogram Waterfall & Bounding Box HUD"]
-    end
-
-    %% Gateway Layer
-    subgraph Gateway ["Ingestion Gateway (Go 1.22 + Pion WebRTC)"]
-        direction LR
-        AudioSink["Audio Ingestion Sink"]
-        VideoSink["Video Ingestion Sink"]
-        Broadcaster["60 FPS Telemetry Broadcaster"]
-    end
-
-    %% Shared Memory IPC Layer
-    subgraph SHM ["Zero-Copy IPC Data Plane (POSIX Shared Memory /dev/shm)"]
-        direction LR
-        AudioRing[("💽 /dev/shm/media_stream_ring\n64-slot Ring Buffer (3,248 B / pkt)")]
-        VideoRing[("💽 /dev/shm/video_stream_ring\n8-slot Ring Buffer (922 KB / pkt)")]
-    end
-
-    %% Processing Worker Daemon
-    subgraph Worker ["Worker Daemon (Rust 2024 / Multi-Threaded)"]
-        direction LR
-        AudioWorker["Audio Worker Thread"]
-        VideoWorker["Video Worker Thread"]
-    end
-
-    %% Compute Acceleration Engines
-    subgraph Compute ["Hybrid Acceleration & ML Engines"]
-        subgraph C11 ["C11 AVX2/FMA Hardware Kernels (libdsp_core.a)"]
-            FFT["512-pt Radix-2 FFT (~2.79 µs)"]
-            VAD["Adaptive RMS Energy VAD (~0.38 µs)"]
-            NMS["Fast Box IoU NMS (~0.65 µs)"]
-        end
-        subgraph PyML ["Embedded ML Runtime (PyO3 Zero-Copy)"]
-            ASR["Streaming ASR & Token Accumulator"]
-            Vision["VisionEngine Face / Object Detector"]
-        end
-    end
-
-    %% Data Plane Ingestion Flows
-    Mic -->|"Web Audio / WebSocket"| AudioSink
-    Cam -->|"Binary WebSocket"| VideoSink
-    AudioSink -->|"Atomic Write"| AudioRing
-    VideoSink -->|"Atomic Write"| VideoRing
-
-    %% In-Place Mutation & Processing Flows
-    AudioRing <-->|"Zero-Copy Mutation"| AudioWorker
-    AudioWorker --> FFT & VAD & ASR
-
-    VideoRing <-->|"Zero-Copy Mutation"| VideoWorker
-    VideoWorker --> NMS & Vision
-
-    %% Real-Time Telemetry Feedback
-    AudioRing -.->|"Poll (FLAG_ML_DONE)"| Broadcaster
-    VideoRing -.->|"Poll (FLAG_ML_DONE)"| Broadcaster
-    Broadcaster -->|"WebRTC DataChannel (60 FPS)"| HUD
+```text
+  +---------------------------------------------------------------------------------------+
+  |                                CLIENT PRESENTATION LAYER                              |
+  |                           (TypeScript / Vite / Web Audio API)                         |
+  +---------------------------------------------------------------------------------------+
+        |  16kHz Audio Stream (PCM)                         |  640x480 RGB Video (30 FPS)
+        |  via WebSocket Fast-Path                          |  via Binary WebSocket Fast-Path
+        v                                                   v
+  +---------------------------------------------------------------------------------------+
+  |                           INGESTION GATEWAY (Go 1.22 + Pion)                          |
+  |                                                                                       |
+  |   +------------------------------------+    +-------------------------------------+   |
+  |   |        Audio Ingestion Sink        |    |        Video Ingestion Sink         |   |
+  |   +------------------------------------+    +-------------------------------------+   |
+  +---------------------------------------------------------------------------------------+
+        |                                                   |
+        | Atomic Non-Blocking Write                         | Atomic Non-Blocking Write
+        v                                                   v
+  +=======================================================================================+
+  |                 ZERO-COPY POSIX SHARED MEMORY DATA PLANE (/dev/shm)                    |
+  |                                                                                       |
+  |   +------------------------------------+    +-------------------------------------+   |
+  |   |     /media_stream_ring (Audio)     |    |     /video_stream_ring (Video)      |   |
+  |   |   64 Slots x 3,248 B (Lock-Free)   |    |    8 Slots x 922 KB (Lock-Free)     |   |
+  |   +------------------------------------+    +-------------------------------------+   |
+  +=======================================================================================+
+        ^                                                   ^
+        | Poll & Zero-Copy In-Place Mutation                | Poll & Zero-Copy In-Place Mutation
+        v                                                   v
+  +---------------------------------------------------------------------------------------+
+  |                        WORKER DAEMON (Rust Edition 2024)                              |
+  |                                                                                       |
+  |   +------------------------------------+    +-------------------------------------+   |
+  |   |        Audio Worker Thread         |    |        Video Worker Thread          |   |
+  |   +------------------------------------+    +-------------------------------------+   |
+  +---------------------------------------------------------------------------------------+
+        |                                                   |
+        +-------------------------+                         +-------------------------+
+        |                         |                         |                         |
+        v                         v                         v                         v
+  +-------------------+  +-------------------+  +-------------------+  +-------------------+
+  |    C11 AVX2 DSP   |  |   PyO3 Audio ML   |  |   PyO3 Vision ML  |  |    C11 SIMD NMS   |
+  | (libdsp_core.a)   |  | (StreamingAsr)    |  |  (VisionEngine)   |  | (libdsp_core.a)   |
+  |                   |  |                   |  |                   |  |                   |
+  | * 512-pt Radix-2  |  | * Progressive ASR |  | * Fast Bounding   |  | * Vectorized IoU  |
+  |   FFT (~2.79 µs)  |  |   Token Stream    |  |   Box Face/Target |  |   Box Filter      |
+  | * Minimum-Stats   |  | * Acoustic RMS    |  |   Inference       |  |   (~0.65 µs)      |
+  |   VAD (~0.38 µs)  |  |   Confidence      |  |   (~2.15 ms)      |  |                   |
+  +-------------------+  +-------------------+  +-------------------+  +-------------------+
+        |                         |                         |                         |
+        +-------------------------+                         +-------------------------+
+        | In-Place Mutation (FLAG_ML_DONE)                  | In-Place Mutation (FLAG_ML_DONE)
+        v                                                   v
+  +=======================================================================================+
+  |                           POSIX SHARED MEMORY RING BUFFERS                            |
+  +=======================================================================================+
+        |                                                   |
+        +-------------------------+-------------------------+
+                                  |
+                                  | Poll (FLAG_ML_DONE committed)
+                                  v
+  +---------------------------------------------------------------------------------------+
+  |              TELEMETRY BROADCASTER (Go Gateway @ 60 FPS Monotonic Ticker)             |
+  +---------------------------------------------------------------------------------------+
+                                  |
+                                  | Multiplexed Telemetry (WebRTC DataChannel / WS)
+                                  v
+  +---------------------------------------------------------------------------------------+
+  |                 LIVE HUD (60 FPS Spectrogram Waterfall + Bounding Box)                |
+  +---------------------------------------------------------------------------------------+
 ```
 
 ### Language Responsibilities:
