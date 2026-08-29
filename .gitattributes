@@ -1,0 +1,17 @@
+# Exclude build files and shell scripts from GitHub Language breakdown
+Makefile linguist-vendored=true
+*.sh linguist-vendored=true
+*.cmake linguist-vendored=true
+CMakeLists.txt linguist-vendored=true
+
+# Mark documentation & benchmark data
+docs/* linguist-documentation=true
+benchmarks/datasets/* linguist-vendored=true
+
+# Ensure Core Source Files are accurately detected
+*.rs linguist-detectable=true
+*.c linguist-detectable=true
+*.h linguist-detectable=true
+*.go linguist-detectable=true
+*.py linguist-detectable=true
+*.ts linguist-detectable=true
