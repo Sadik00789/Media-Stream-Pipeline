@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    ipc: "host"
+    volumes:
+      - /dev/shm:/dev/shm
+    environment:
+      - HTTP_PORT=8080
+      - SHM_NAME=/media_stream_ring
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.worker
+    ipc: "host"
+    volumes:
+      - /dev/shm:/dev/shm
+    environment:
+      - SHM_NAME=/media_stream_ring
+      - VAD_THRESHOLD=0.015
+    depends_on:
+      - gateway
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.web
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway

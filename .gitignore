@@ -1,0 +1,33 @@
+# C / CMake
+dsp/build/
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# Rust
+crates/target/
+target/
+**/*.rs.bk
+
+# Node / Frontend
+web/node_modules/
+web/dist/
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+python/dist/
+python/build/
+
+# Shared Memory / OS
+/dev/shm/*
+.DS_Store
+Thumbs.db

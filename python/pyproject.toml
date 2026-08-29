@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "streaming-ml"
+version = "0.1.0"
+description = "Real-time streaming audio ML and VAD engine"
+authors = [{ name = "Media Stream Pipeline Team" }]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.0",
+    "onnxruntime>=1.17.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "scipy>=1.12.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
