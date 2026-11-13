@@ -28,7 +28,13 @@ class VisionEngine:
         self.height = 480
         self.channels = 3
 
-        if HAS_ONNX and HAS_NUMPY and model_path and os.path.exists(model_path):
+        if (
+            HAS_ONNX
+            and HAS_NUMPY
+            and model_path
+            and os.path.isfile(model_path)
+            and os.path.getsize(model_path) > 0
+        ):
             try:
                 opts = ort.SessionOptions()
                 opts.inter_op_num_threads = 1

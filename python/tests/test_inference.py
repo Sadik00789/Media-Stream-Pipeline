@@ -38,6 +38,31 @@ def test_inference_engine_loud_tone():
     assert conf > 0.6
 
 
+def test_nan_inf_sanitization():
+    nan_buf = [float("nan")] * 256 + [float("inf")] * 128 + [float("-inf")] * 128
+    cleaned = validate_audio_tensor(nan_buf)
+    assert len(cleaned) == 512
+    assert all(math.isfinite(float(x)) for x in cleaned)
+
+    engine = StreamingInferenceEngine()
+    conf, text = engine.process_frame(nan_buf)
+    assert math.isfinite(conf)
+    assert conf == 0.0
+    assert text == ""
+
+
+def test_zero_byte_onnx_fallback_and_process_pcm(tmp_path):
+    empty_model = tmp_path / "empty_silero.onnx"
+    empty_model.write_bytes(b"")
+
+    engine = StreamingInferenceEngine(model_path=str(empty_model))
+    assert engine.session is None
+
+    tone = [0.5 * math.sin(2.0 * math.pi * 1000.0 * float(i) / 16000.0) for i in range(512)]
+    conf = engine.process_pcm(tone, vad_active=True)
+    assert 0.6 < conf <= 1.0
+
+
 if __name__ == "__main__":
     print("[TEST] Running Python Streaming ML verification suite...")
     test_tensor_validation()

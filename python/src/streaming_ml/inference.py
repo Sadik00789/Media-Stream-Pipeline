@@ -65,7 +65,7 @@ class StreamingInferenceEngine:
         ]
 
         for cand in candidates:
-            if cand and os.path.exists(cand):
+            if cand and os.path.isfile(cand) and os.path.getsize(cand) > 0:
                 resolved_path = os.path.abspath(cand)
                 break
 

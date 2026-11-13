@@ -50,6 +50,34 @@ def test_vision_engine_flat_array_input():
     assert isinstance(boxes, list)
 
 
+def test_vision_engine_zero_byte_onnx_fallback(tmp_path):
+    empty_model = tmp_path / "empty_vision.onnx"
+    empty_model.write_bytes(b"")
+    engine = VisionEngine(model_path=str(empty_model))
+    assert engine.session is None
+
+
+def test_vision_engine_salient_contrast_object():
+    engine = VisionEngine()
+    frame = np.full((480, 640, 3), 100, dtype=np.uint8)
+    # High-contrast grayscale blocks in center (not skin-tone, visible across stride-16)
+    for y in range(128, 352, 32):
+        for x in range(160, 480, 32):
+            frame[y : y + 16, x : x + 16, :] = 250
+            frame[y + 16 : y + 32, x + 16 : x + 32, :] = 20
+
+    boxes = engine.process_frame(frame)
+    assert len(boxes) == 1
+    assert boxes[0][5] == 1.0  # Salient Object class
+    assert boxes[0][4] > 0.5
+
+
+def test_vision_engine_invalid_shape_graceful():
+    engine = VisionEngine()
+    assert engine.process_frame(np.zeros((10, 10), dtype=np.uint8)) == []
+    assert engine.process_frame(np.zeros((5, 5, 3), dtype=np.uint8)) == []
+
+
 if __name__ == "__main__":
     print("[TEST] Running Python Streaming Vision ML test suite...")
     test_vision_engine_init()

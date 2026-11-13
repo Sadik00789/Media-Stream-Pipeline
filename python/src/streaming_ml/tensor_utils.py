@@ -3,6 +3,7 @@ Utilities for zero-copy memory validation and tensor preprocessing.
 Supports numpy.ndarray when available, with pure-Python sequence fallback.
 """
 
+import math
 from typing import Any, Sequence
 
 try:
@@ -32,10 +33,13 @@ def validate_audio_tensor(audio: Any, expected_samples: int = 512) -> Any:
         if len(audio) != expected_samples:
             raise ValueError(f"Audio buffer length mismatch: expected {expected_samples}, got {len(audio)}")
 
+        if not np.all(np.isfinite(audio)):
+            audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+
         return audio
     else:
         if not isinstance(audio, (list, tuple, Sequence)):
             raise TypeError(f"Expected sequence, received {type(audio)}")
         if len(audio) != expected_samples:
             raise ValueError(f"Audio buffer length mismatch: expected {expected_samples}, got {len(audio)}")
-        return [float(x) for x in audio]
+        return [0.0 if not math.isfinite(float(x)) else float(x) for x in audio]
