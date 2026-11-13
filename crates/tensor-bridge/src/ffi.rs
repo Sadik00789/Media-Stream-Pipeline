@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]
+#![allow(clippy::large_const_arrays)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
@@ -20,4 +21,3 @@ unsafe impl Sync for VideoFramePacket {}
 
 unsafe impl Send for SharedMemoryVideoRingBuffer {}
 unsafe impl Sync for SharedMemoryVideoRingBuffer {}
-

@@ -1,6 +1,6 @@
 use crate::ffi::{
-    AudioFramePacket, SharedMemoryRingBuffer, SharedMemoryVideoRingBuffer,
-    VideoFramePacket, SHM_MAGIC, SHM_RING_CAPACITY, VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC,
+    AudioFramePacket, SHM_MAGIC, SHM_RING_CAPACITY, SharedMemoryRingBuffer,
+    SharedMemoryVideoRingBuffer, VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC, VideoFramePacket,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -10,7 +10,12 @@ pub struct ShmRingBufferReader {
 }
 
 impl ShmRingBufferReader {
-    /// Safety: caller must ensure `raw` points to valid initialized mmap memory.
+    /// Creates a reader wrapper over an initialized shared-memory audio ring buffer.
+    ///
+    /// # Safety
+    ///
+    /// `raw` must be null or point to a valid, aligned, mapped `SharedMemoryRingBuffer`
+    /// that outlives this reader.
     pub unsafe fn from_raw(raw: *mut SharedMemoryRingBuffer) -> Result<Self, &'static str> {
         if raw.is_null() {
             return Err("Shared memory pointer is null");
@@ -49,9 +54,7 @@ impl ShmRingBufferReader {
     /// Obtains a direct mutable pointer to a packet in shared memory without copying
     #[inline]
     pub fn get_packet_mut(&mut self, slot: usize) -> &mut AudioFramePacket {
-        unsafe {
-            &mut (*self.raw).packets[slot % (SHM_RING_CAPACITY as usize)]
-        }
+        unsafe { &mut (*self.raw).packets[slot % (SHM_RING_CAPACITY as usize)] }
     }
 
     /// Read next available packet with automatic overrun recovery
@@ -73,10 +76,12 @@ impl ShmRingBufferReader {
                     ) {
                         Ok(_) => {
                             let dropped = new_r - r;
-                            let drop_ptr = std::ptr::addr_of_mut!((*self.raw).dropped_frames) as *mut AtomicU64;
+                            let drop_ptr = std::ptr::addr_of_mut!((*self.raw).dropped_frames)
+                                as *mut AtomicU64;
                             (*drop_ptr).fetch_add(dropped, Ordering::Relaxed);
 
-                            let overrun_ptr = std::ptr::addr_of_mut!((*self.raw).overrun_count) as *mut AtomicU64;
+                            let overrun_ptr =
+                                std::ptr::addr_of_mut!((*self.raw).overrun_count) as *mut AtomicU64;
                             (*overrun_ptr).fetch_add(1, Ordering::Relaxed);
 
                             r = new_r;
@@ -114,7 +119,12 @@ pub struct ShmVideoRingBufferReader {
 }
 
 impl ShmVideoRingBufferReader {
-    /// Safety: caller must ensure `raw` points to valid initialized mmap memory.
+    /// Creates a reader wrapper over an initialized shared-memory video ring buffer.
+    ///
+    /// # Safety
+    ///
+    /// `raw` must be null or point to a valid, aligned, mapped `SharedMemoryVideoRingBuffer`
+    /// that outlives this reader.
     pub unsafe fn from_raw(raw: *mut SharedMemoryVideoRingBuffer) -> Result<Self, &'static str> {
         if raw.is_null() {
             return Err("Video shared memory pointer is null");
@@ -153,9 +163,7 @@ impl ShmVideoRingBufferReader {
     /// Obtains a direct mutable pointer to a video packet in shared memory without copying
     #[inline]
     pub fn get_packet_mut(&mut self, slot: usize) -> &mut VideoFramePacket {
-        unsafe {
-            &mut (*self.raw).packets[slot % (VIDEO_RING_CAPACITY as usize)]
-        }
+        unsafe { &mut (*self.raw).packets[slot % (VIDEO_RING_CAPACITY as usize)] }
     }
 
     /// Read next available video frame packet with automatic overrun recovery
@@ -177,10 +185,12 @@ impl ShmVideoRingBufferReader {
                     ) {
                         Ok(_) => {
                             let dropped = new_r - r;
-                            let drop_ptr = std::ptr::addr_of_mut!((*self.raw).dropped_frames) as *mut AtomicU64;
+                            let drop_ptr = std::ptr::addr_of_mut!((*self.raw).dropped_frames)
+                                as *mut AtomicU64;
                             (*drop_ptr).fetch_add(dropped, Ordering::Relaxed);
 
-                            let overrun_ptr = std::ptr::addr_of_mut!((*self.raw).overrun_count) as *mut AtomicU64;
+                            let overrun_ptr =
+                                std::ptr::addr_of_mut!((*self.raw).overrun_count) as *mut AtomicU64;
                             (*overrun_ptr).fetch_add(1, Ordering::Relaxed);
 
                             r = new_r;
@@ -235,7 +245,7 @@ mod tests {
 
         ring.magic = SHM_MAGIC;
         ring.version = SHM_VERSION;
-        ring.buffer_capacity = SHM_RING_CAPACITY as u32;
+        ring.buffer_capacity = SHM_RING_CAPACITY;
         ring.packet_size = std::mem::size_of::<AudioFramePacket>() as u32;
 
         let mut reader = unsafe { ShmRingBufferReader::from_raw(&mut *ring) }.unwrap();
@@ -263,8 +273,13 @@ mod tests {
         }
         ring.write_head = overrun_w;
 
-        let pkt = reader.poll_next_packet().expect("expected overrun-recovered packet");
-        assert_eq!({ pkt.sequence_number }, overrun_w - SHM_RING_CAPACITY as u64 + 1);
+        let pkt = reader
+            .poll_next_packet()
+            .expect("expected overrun-recovered packet");
+        assert_eq!(
+            { pkt.sequence_number },
+            overrun_w - SHM_RING_CAPACITY as u64 + 1
+        );
         assert_eq!({ ring.overrun_count }, 1);
         assert_eq!({ ring.dropped_frames }, 5);
     }
@@ -278,7 +293,7 @@ mod tests {
 
         ring.magic = VIDEO_SHM_MAGIC;
         ring.version = VIDEO_SHM_VERSION;
-        ring.buffer_capacity = VIDEO_RING_CAPACITY as u32;
+        ring.buffer_capacity = VIDEO_RING_CAPACITY;
         ring.packet_size = std::mem::size_of::<VideoFramePacket>() as u32;
 
         let mut reader = unsafe { ShmVideoRingBufferReader::from_raw(&mut *ring) }.unwrap();
@@ -299,7 +314,10 @@ mod tests {
         }
         ring.write_head = overrun_w;
         let recovered = reader.poll_next_packet().unwrap();
-        assert_eq!({ recovered.sequence_number }, overrun_w - VIDEO_RING_CAPACITY as u64 + 1);
+        assert_eq!(
+            { recovered.sequence_number },
+            overrun_w - VIDEO_RING_CAPACITY as u64 + 1
+        );
         assert_eq!({ ring.overrun_count }, 1);
         assert_eq!({ ring.dropped_frames }, 3);
     }

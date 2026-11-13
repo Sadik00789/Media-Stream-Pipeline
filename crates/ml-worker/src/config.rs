@@ -25,11 +25,19 @@ pub struct WorkerConfig {
     pub vad_threshold: f32,
 
     /// Optional path to Audio ONNX model weights
-    #[arg(long, env = "MODEL_PATH", default_value = "python/models/silero_vad.onnx")]
+    #[arg(
+        long,
+        env = "MODEL_PATH",
+        default_value = "python/models/silero_vad.onnx"
+    )]
     pub model_path: String,
 
     /// Optional path to Vision ONNX model weights
-    #[arg(long, env = "VISION_MODEL_PATH", default_value = "python/models/ultraface.onnx")]
+    #[arg(
+        long,
+        env = "VISION_MODEL_PATH",
+        default_value = "python/models/ultraface.onnx"
+    )]
     pub vision_model_path: String,
 }
 

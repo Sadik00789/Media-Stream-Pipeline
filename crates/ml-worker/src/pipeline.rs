@@ -1,6 +1,6 @@
 use crate::py_runtime::{PyRuntimeManager, VisionRuntimeManager};
 use tensor_bridge::ffi::{
-    AudioFramePacket, DetectionBox, DspWindowType, VideoFramePacket, FLAG_ML_DONE, MAX_DETECTIONS,
+    AudioFramePacket, DetectionBox, DspWindowType, FLAG_ML_DONE, MAX_DETECTIONS, VideoFramePacket,
 };
 use tensor_bridge::{DspEngine, VisionSimd};
 
@@ -47,8 +47,8 @@ impl AudioPipeline {
             // Copy transcript string into fixed-size buffer safely
             let bytes = transcript.as_bytes();
             let copy_len = bytes.len().min(packet.ml_transcript.len() - 1);
-            for i in 0..copy_len {
-                packet.ml_transcript[i] = bytes[i] as std::os::raw::c_char;
+            for (dst, &src) in packet.ml_transcript.iter_mut().zip(&bytes[..copy_len]) {
+                *dst = src as std::os::raw::c_char;
             }
             packet.ml_transcript[copy_len] = 0; // null-terminate
 
@@ -112,9 +112,7 @@ impl VideoPipeline {
             let count = filtered.len().min(MAX_DETECTIONS as usize);
             packet.detection_count = count as u32;
 
-            for i in 0..count {
-                packet.detections[i] = filtered[i];
-            }
+            packet.detections[..count].copy_from_slice(&filtered[..count]);
             for i in count..(MAX_DETECTIONS as usize) {
                 packet.detections[i] = DetectionBox::default();
             }
@@ -129,7 +127,9 @@ impl VideoPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tensor_bridge::ffi::{FLAG_DSP_DONE, FRAME_SAMPLES, VIDEO_CHANNELS, VIDEO_HEIGHT, VIDEO_WIDTH};
+    use tensor_bridge::ffi::{
+        FLAG_DSP_DONE, FRAME_SAMPLES, VIDEO_CHANNELS, VIDEO_HEIGHT, VIDEO_WIDTH,
+    };
 
     #[test]
     fn test_audio_pipeline_end_to_end() {
@@ -139,7 +139,7 @@ mod tests {
             sequence_number: 1,
             sample_rate: 16000,
             channels: 1,
-            sample_count: FRAME_SAMPLES as u32,
+            sample_count: FRAME_SAMPLES,
             ..Default::default()
         };
         for i in 0..(FRAME_SAMPLES as usize) {
@@ -166,8 +166,8 @@ mod tests {
             Box::from_raw(ptr)
         };
         pkt.sequence_number = 1;
-        pkt.width = VIDEO_WIDTH as u32;
-        pkt.height = VIDEO_HEIGHT as u32;
+        pkt.width = VIDEO_WIDTH;
+        pkt.height = VIDEO_HEIGHT;
 
         // Paint a synthetic skin-tone rectangle in the center
         for y in 150..330 {

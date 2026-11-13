@@ -4,8 +4,8 @@ pub mod pyo3_bindings;
 pub mod ring_buffer;
 
 use ffi::{
-    dsp_configure, dsp_init, dsp_process_frame, simd_fast_box_nms, simd_rgb24_to_planar_f32,
-    AudioFramePacket, DetectionBox, DspConfig, DspWindowType,
+    AudioFramePacket, DetectionBox, DspConfig, DspWindowType, dsp_configure, dsp_init,
+    dsp_process_frame, simd_fast_box_nms, simd_rgb24_to_planar_f32,
 };
 use std::sync::Mutex;
 
@@ -66,7 +66,11 @@ impl VisionSimd {
         }
     }
 
-    pub fn fast_box_nms(boxes_in: &[DetectionBox], iou_threshold: f32, max_out: usize) -> Vec<DetectionBox> {
+    pub fn fast_box_nms(
+        boxes_in: &[DetectionBox],
+        iou_threshold: f32,
+        max_out: usize,
+    ) -> Vec<DetectionBox> {
         let mut out = vec![DetectionBox::default(); max_out];
         let count = unsafe {
             simd_fast_box_nms(
@@ -95,7 +99,7 @@ mod tests {
             timestamp_ns: 1000,
             sample_rate: 16000,
             channels: 1,
-            sample_count: FRAME_SAMPLES as u32,
+            sample_count: FRAME_SAMPLES,
             ..Default::default()
         };
 
@@ -118,8 +122,22 @@ mod tests {
         assert!((planar[0] - (128.0 / 255.0)).abs() < 1e-4);
 
         let boxes = vec![
-            DetectionBox { ymin: 0.1, xmin: 0.1, ymax: 0.5, xmax: 0.5, confidence: 0.9, class_id: 0 },
-            DetectionBox { ymin: 0.11, xmin: 0.11, ymax: 0.49, xmax: 0.51, confidence: 0.8, class_id: 0 },
+            DetectionBox {
+                ymin: 0.1,
+                xmin: 0.1,
+                ymax: 0.5,
+                xmax: 0.5,
+                confidence: 0.9,
+                class_id: 0,
+            },
+            DetectionBox {
+                ymin: 0.11,
+                xmin: 0.11,
+                ymax: 0.49,
+                xmax: 0.51,
+                confidence: 0.8,
+                class_id: 0,
+            },
         ];
         let filtered = VisionSimd::fast_box_nms(&boxes, 0.45, 10);
         assert_eq!(filtered.len(), 1);
@@ -145,11 +163,12 @@ mod tests {
             sequence_number: 2,
             sample_rate: 16000,
             channels: 1,
-            sample_count: FRAME_SAMPLES as u32,
+            sample_count: FRAME_SAMPLES,
             ..Default::default()
         };
         for i in 0..(FRAME_SAMPLES as usize) {
-            packet.pcm_data[i] = 0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
+            packet.pcm_data[i] =
+                0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
         }
         engine.process_frame(&mut packet);
         let flags = { packet.flags };

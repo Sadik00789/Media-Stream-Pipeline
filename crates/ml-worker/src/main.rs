@@ -7,8 +7,8 @@ use clap::Parser;
 use config::WorkerConfig;
 use ipc::{ShmContext, VideoShmContext};
 use pipeline::{AudioPipeline, VideoPipeline};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
@@ -22,7 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let config = WorkerConfig::parse();
-    info!("Starting Dual-Track Audio + Video ML Worker Daemon with config: {:?}", config);
+    info!(
+        "Starting Dual-Track Audio + Video ML Worker Daemon with config: {:?}",
+        config
+    );
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -37,16 +40,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_audio = config.clone();
     let audio_handle = thread::spawn(move || {
         info!("Initializing Audio Processing Pipeline (C11 SIMD + PyO3)...");
-        let mut audio_pipeline =
-            match AudioPipeline::new_with_config(&config_audio.model_path, config_audio.vad_threshold) {
-                Ok(p) => p,
-                Err(e) => {
-                    warn!("Failed to initialize audio pipeline: {}", e);
-                    return;
-                }
-            };
+        let mut audio_pipeline = match AudioPipeline::new_with_config(
+            &config_audio.model_path,
+            config_audio.vad_threshold,
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("Failed to initialize audio pipeline: {}", e);
+                return;
+            }
+        };
 
-        info!("Waiting for Audio Shared Memory segment '{}'...", config_audio.shm_name);
+        info!(
+            "Waiting for Audio Shared Memory segment '{}'...",
+            config_audio.shm_name
+        );
         let (_shm_ctx, mut shm_reader) = loop {
             if !running_audio.load(Ordering::SeqCst) {
                 return;
@@ -83,7 +91,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let elapsed_us = start.elapsed().as_micros();
                 if elapsed_us > 20000 {
-                    warn!("Audio Frame {} processing latency exceeded 20ms: {} µs", seq, elapsed_us);
+                    warn!(
+                        "Audio Frame {} processing latency exceeded 20ms: {} µs",
+                        seq, elapsed_us
+                    );
                 }
             } else {
                 thread::sleep(poll_sleep);
@@ -93,7 +104,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let delta_frames = processed_frames - last_processed_frames;
                 if delta_frames > 0 {
                     let fps = (delta_frames as f64) / last_stats_time.elapsed().as_secs_f64();
-                    info!("Audio Throughput: {:.2} frames/sec (Total: {})", fps, processed_frames);
+                    info!(
+                        "Audio Throughput: {:.2} frames/sec (Total: {})",
+                        fps, processed_frames
+                    );
                     last_processed_frames = processed_frames;
                 }
                 last_stats_time = Instant::now();
@@ -115,7 +129,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        info!("Waiting for Video Shared Memory segment '{}'...", config_video.video_shm_name);
+        info!(
+            "Waiting for Video Shared Memory segment '{}'...",
+            config_video.video_shm_name
+        );
         let (_video_shm_ctx, mut video_shm_reader) = loop {
             if !running_video.load(Ordering::SeqCst) {
                 return;
@@ -152,7 +169,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let elapsed_us = start.elapsed().as_micros();
                 if elapsed_us > 33000 {
-                    warn!("Video Frame {} processing latency exceeded 33ms (30 FPS budget): {} µs", seq, elapsed_us);
+                    warn!(
+                        "Video Frame {} processing latency exceeded 33ms (30 FPS budget): {} µs",
+                        seq, elapsed_us
+                    );
                 }
             } else {
                 thread::sleep(poll_sleep);
@@ -162,7 +182,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let delta_frames = processed_frames - last_processed_frames;
                 if delta_frames > 0 {
                     let fps = (delta_frames as f64) / last_stats_time.elapsed().as_secs_f64();
-                    info!("Video Throughput: {:.2} frames/sec (Total: {})", fps, processed_frames);
+                    info!(
+                        "Video Throughput: {:.2} frames/sec (Total: {})",
+                        fps, processed_frames
+                    );
                     last_processed_frames = processed_frames;
                 }
                 last_stats_time = Instant::now();

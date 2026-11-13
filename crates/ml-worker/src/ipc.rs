@@ -2,9 +2,9 @@ use std::ffi::c_void;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
 use tensor_bridge::ffi::{
-    AudioFramePacket, SharedMemoryRingBuffer, SharedMemoryVideoRingBuffer, VideoFramePacket,
-    SHM_MAGIC, SHM_RING_CAPACITY, SHM_VERSION, VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC,
-    VIDEO_SHM_VERSION,
+    AudioFramePacket, SHM_MAGIC, SHM_RING_CAPACITY, SHM_VERSION, SharedMemoryRingBuffer,
+    SharedMemoryVideoRingBuffer, VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC, VIDEO_SHM_VERSION,
+    VideoFramePacket,
 };
 use tensor_bridge::ring_buffer::{ShmRingBufferReader, ShmVideoRingBufferReader};
 use tracing::info;
@@ -12,7 +12,7 @@ use tracing::info;
 #[cfg(unix)]
 mod platform {
     use super::*;
-    use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
+    use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap};
     use std::num::NonZeroUsize;
     use std::os::unix::fs::OpenOptionsExt;
     use std::ptr::NonNull;
@@ -33,9 +33,16 @@ mod platform {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .mode(0o666)
             .open(shm_path)
-            .map_err(|e| format!("Failed to open shared memory file '{}': {}", shm_path.display(), e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to open shared memory file '{}': {}",
+                    shm_path.display(),
+                    e
+                )
+            })?;
 
         let metadata = file
             .metadata()
@@ -44,7 +51,11 @@ mod platform {
         if metadata.len() < size as u64 {
             file.set_len(size as u64)
                 .map_err(|e| format!("Failed to set shm size to {} bytes: {}", size, e))?;
-            info!("Initialized shared memory file '{}' with size {} bytes", shm_path.display(), size);
+            info!(
+                "Initialized shared memory file '{}' with size {} bytes",
+                shm_path.display(),
+                size
+            );
         }
 
         let non_zero_size = NonZeroUsize::new(size).ok_or("Invalid SHM struct size")?;
@@ -126,8 +137,15 @@ mod platform {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(shm_path)
-            .map_err(|e| format!("Failed to open shared memory file '{}': {}", shm_path.display(), e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to open shared memory file '{}': {}",
+                    shm_path.display(),
+                    e
+                )
+            })?;
 
         let metadata = file
             .metadata()
@@ -136,7 +154,11 @@ mod platform {
         if metadata.len() < size as u64 {
             file.set_len(size as u64)
                 .map_err(|e| format!("Failed to set shm size to {} bytes: {}", size, e))?;
-            info!("Initialized shared memory file '{}' with size {} bytes", shm_path.display(), size);
+            info!(
+                "Initialized shared memory file '{}' with size {} bytes",
+                shm_path.display(),
+                size
+            );
         }
 
         let high = ((size as u64) >> 32) as u32;
@@ -208,7 +230,7 @@ impl ShmContext {
             if (*ring_ptr).magic != SHM_MAGIC {
                 (*ring_ptr).magic = SHM_MAGIC;
                 (*ring_ptr).version = SHM_VERSION;
-                (*ring_ptr).buffer_capacity = SHM_RING_CAPACITY as u32;
+                (*ring_ptr).buffer_capacity = SHM_RING_CAPACITY;
                 (*ring_ptr).packet_size = std::mem::size_of::<AudioFramePacket>() as u32;
                 (*ring_ptr).write_head = 0;
                 (*ring_ptr).read_head = 0;
@@ -242,7 +264,7 @@ impl VideoShmContext {
             if (*ring_ptr).magic != VIDEO_SHM_MAGIC {
                 (*ring_ptr).magic = VIDEO_SHM_MAGIC;
                 (*ring_ptr).version = VIDEO_SHM_VERSION;
-                (*ring_ptr).buffer_capacity = VIDEO_RING_CAPACITY as u32;
+                (*ring_ptr).buffer_capacity = VIDEO_RING_CAPACITY;
                 (*ring_ptr).packet_size = std::mem::size_of::<VideoFramePacket>() as u32;
                 (*ring_ptr).write_head = 0;
                 (*ring_ptr).read_head = 0;

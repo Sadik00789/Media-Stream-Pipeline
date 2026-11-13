@@ -1,4 +1,4 @@
-use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::alloc::{Layout, alloc_zeroed, dealloc};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
@@ -20,8 +20,8 @@ impl<T: Copy> AlignedVec<T> {
             .expect("Capacity overflow");
 
         if total_bytes == 0 {
-            let layout = Layout::from_size_align(0, effective_align)
-                .expect("Invalid layout parameters");
+            let layout =
+                Layout::from_size_align(0, effective_align).expect("Invalid layout parameters");
             return Self {
                 ptr: NonNull::dangling(),
                 len: capacity,
@@ -58,7 +58,7 @@ impl<T: Copy> AlignedVec<T> {
     }
 
     pub fn is_aligned_to(&self, alignment: usize) -> bool {
-        (self.ptr.as_ptr() as usize) % alignment == 0
+        (self.ptr.as_ptr() as usize).is_multiple_of(alignment)
     }
 }
 

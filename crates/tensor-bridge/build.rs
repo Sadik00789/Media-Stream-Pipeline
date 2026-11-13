@@ -5,23 +5,23 @@ use std::process::Command;
 
 fn write_fallback_bindings(out_path: &PathBuf) {
     let fallback_bindings = r#"
-pub const FRAME_SAMPLES: usize = 512;
-pub const SPECTROGRAM_BINS: usize = 256;
-pub const SHM_RING_CAPACITY: usize = 64;
+pub const FRAME_SAMPLES: u32 = 512;
+pub const SPECTROGRAM_BINS: u32 = 256;
+pub const SHM_RING_CAPACITY: u32 = 64;
 pub const SHM_MAGIC: u32 = 1297306994; /* 0x4D535452 */
 pub const SHM_VERSION: u32 = 1;
 
-pub const VIDEO_WIDTH: usize = 640;
-pub const VIDEO_HEIGHT: usize = 480;
-pub const VIDEO_CHANNELS: usize = 3;
-pub const VIDEO_FRAME_SIZE: usize = 921600;
-pub const VIDEO_RING_CAPACITY: usize = 8;
+pub const VIDEO_WIDTH: u32 = 640;
+pub const VIDEO_HEIGHT: u32 = 480;
+pub const VIDEO_CHANNELS: u32 = 3;
+pub const VIDEO_FRAME_SIZE: u32 = 921600;
+pub const VIDEO_RING_CAPACITY: u32 = 8;
 pub const VIDEO_SHM_MAGIC: u32 = 1447380037; /* 0x56494445 */
 pub const VIDEO_SHM_VERSION: u32 = 1;
 
 pub const VIDEO_FORMAT_RGB24: u32 = 0;
 pub const VIDEO_FORMAT_YUV420P: u32 = 1;
-pub const MAX_DETECTIONS: usize = 16;
+pub const MAX_DETECTIONS: u32 = 16;
 
 pub const FLAG_INGESTED: u32 = 1;
 pub const FLAG_DSP_DONE: u32 = 2;
@@ -190,7 +190,10 @@ fn main() {
     }
 
     if dsp_release_dir.exists() {
-        println!("cargo:rustc-link-search=native={}", dsp_release_dir.display());
+        println!(
+            "cargo:rustc-link-search=native={}",
+            dsp_release_dir.display()
+        );
     }
     println!("cargo:rustc-link-search=native={}", dsp_build_dir.display());
     println!("cargo:rustc-link-lib=static=dsp_core");
@@ -203,20 +206,31 @@ fn main() {
         println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
         println!("cargo:rustc-link-search=native=/usr/local/lib");
     } else if let Ok(output) = Command::new("python")
-        .args(["-c", "import sys, os; print(os.path.join(sys.base_prefix, 'libs'))"])
+        .args([
+            "-c",
+            "import sys, os; print(os.path.join(sys.base_prefix, 'libs'))",
+        ])
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let py_libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !py_libs.is_empty() {
-                println!("cargo:rustc-link-search=native={}", py_libs);
-            }
+        let py_libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !py_libs.is_empty() {
+            println!("cargo:rustc-link-search=native={}", py_libs);
         }
     }
 
-    println!("cargo:rerun-if-changed={}", include_dir.join("ipc_protocol.h").display());
-    println!("cargo:rerun-if-changed={}", dsp_include_dir.join("dsp_core.h").display());
-    println!("cargo:rerun-if-changed={}", dsp_include_dir.join("simd_vision.h").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        include_dir.join("ipc_protocol.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        dsp_include_dir.join("dsp_core.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        dsp_include_dir.join("simd_vision.h").display()
+    );
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
 

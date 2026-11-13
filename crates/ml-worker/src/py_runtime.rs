@@ -15,7 +15,8 @@ impl PyRuntimeManager {
 
         Python::with_gil(|py| {
             let sys = py.import_bound("sys").map_err(|e| e.to_string())?;
-            let path: Bound<'_, PyList> = sys.getattr("path")
+            let path: Bound<'_, PyList> = sys
+                .getattr("path")
                 .map_err(|e| e.to_string())?
                 .extract()
                 .map_err(|e| e.to_string())?;
@@ -55,7 +56,8 @@ impl PyRuntimeManager {
             }
 
             // Attempt importing as module or direct script with clear traceback logging
-            let module = py.import_bound("streaming_ml.asr_engine")
+            let module = py
+                .import_bound("streaming_ml.asr_engine")
                 .or_else(|_| py.import_bound("asr_engine"))
                 .or_else(|_| py.import_bound("streaming_ml.inference"))
                 .or_else(|_| py.import_bound("inference"))
@@ -65,12 +67,14 @@ impl PyRuntimeManager {
                 })?;
 
             let instance = if let Ok(engine_class) = module.getattr("StreamingAsrEngine") {
-                engine_class.call0()
+                engine_class
+                    .call0()
                     .map_err(|e| format!("Failed to call StreamingAsrEngine(): {:?}", e))?
             } else if let Ok(engine_class) = module.getattr("StreamingInferenceEngine") {
                 let kwargs = PyDict::new_bound(py);
                 let _ = kwargs.set_item("model_path", model_path);
-                engine_class.call((), Some(&kwargs))
+                engine_class
+                    .call((), Some(&kwargs))
                     .map_err(|e| format!("Failed to call StreamingInferenceEngine(): {:?}", e))?
             } else {
                 return Err("Failed to find engine class in audio ML module".to_string());
@@ -93,7 +97,10 @@ impl PyRuntimeManager {
                 Ok(result) => {
                     if let Ok(tuple) = result.extract::<Bound<'_, PyTuple>>() {
                         let conf: f32 = tuple.get_item(0).and_then(|v| v.extract()).unwrap_or(0.0);
-                        let text: String = tuple.get_item(1).and_then(|v| v.extract()).unwrap_or_default();
+                        let text: String = tuple
+                            .get_item(1)
+                            .and_then(|v| v.extract())
+                            .unwrap_or_default();
                         (conf, text)
                     } else if let Ok(conf) = result.extract::<f32>() {
                         (conf, String::new())
@@ -120,11 +127,12 @@ impl VisionRuntimeManager {
 
         Python::with_gil(|py| {
             let sys = py.import_bound("sys").map_err(|e| e.to_string())?;
-            let path: Bound<'_, PyList> = sys.getattr("path")
+            let path: Bound<'_, PyList> = sys
+                .getattr("path")
                 .map_err(|e| e.to_string())?
                 .extract()
                 .map_err(|e| e.to_string())?;
-            
+
             let mut candidates = vec![
                 PathBuf::from("python/src"),
                 PathBuf::from("../../python/src"),
@@ -158,20 +166,23 @@ impl VisionRuntimeManager {
                 }
             }
 
-            let vision_module = py.import_bound("streaming_ml.vision_engine")
+            let vision_module = py
+                .import_bound("streaming_ml.vision_engine")
                 .or_else(|_| py.import_bound("vision_engine"))
                 .map_err(|e| {
                     error!("Python vision ML import failure: {:?}", e);
                     format!("Failed to import streaming_ml.vision_engine: {:?}", e)
                 })?;
 
-            let engine_class = vision_module.getattr("VisionEngine")
+            let engine_class = vision_module
+                .getattr("VisionEngine")
                 .map_err(|e| format!("Failed to get VisionEngine class: {}", e))?;
 
             let kwargs = PyDict::new_bound(py);
             let _ = kwargs.set_item("model_path", model_path);
 
-            let instance = engine_class.call((), Some(&kwargs))
+            let instance = engine_class
+                .call((), Some(&kwargs))
                 .map_err(|e| format!("Failed to instantiate VisionEngine: {}", e))?;
 
             info!("Embedded Python Vision ML Runtime successfully initialized");
@@ -200,24 +211,23 @@ impl VisionRuntimeManager {
                     if let Ok(seq) = result.extract::<Bound<'_, PySequence>>() {
                         let len = seq.len().unwrap_or(0);
                         for i in 0..len {
-                            if let Ok(item) = seq.get_item(i) {
-                                if let Ok(box_vals) = item.extract::<Vec<f32>>() {
-                                    if box_vals.len() >= 5 {
-                                        let class_id = if box_vals.len() >= 6 {
-                                            box_vals[5] as u32
-                                        } else {
-                                            0
-                                        };
-                                        boxes.push(DetectionBox {
-                                            ymin: box_vals[0],
-                                            xmin: box_vals[1],
-                                            ymax: box_vals[2],
-                                            xmax: box_vals[3],
-                                            confidence: box_vals[4],
-                                            class_id,
-                                        });
-                                    }
-                                }
+                            if let Ok(item) = seq.get_item(i)
+                                && let Ok(box_vals) = item.extract::<Vec<f32>>()
+                                && box_vals.len() >= 5
+                            {
+                                let class_id = if box_vals.len() >= 6 {
+                                    box_vals[5] as u32
+                                } else {
+                                    0
+                                };
+                                boxes.push(DetectionBox {
+                                    ymin: box_vals[0],
+                                    xmin: box_vals[1],
+                                    ymax: box_vals[2],
+                                    xmax: box_vals[3],
+                                    confidence: box_vals[4],
+                                    class_id,
+                                });
                             }
                         }
                     }
