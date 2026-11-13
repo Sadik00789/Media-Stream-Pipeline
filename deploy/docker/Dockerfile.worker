@@ -1,5 +1,5 @@
 # Multi-stage C/Rust/Python ML Worker Runtime
-FROM rust:1.79-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
     cmake \

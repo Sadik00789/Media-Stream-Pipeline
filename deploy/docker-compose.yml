@@ -13,6 +13,7 @@ services:
     environment:
       - HTTP_PORT=8080
       - SHM_NAME=/media_stream_ring
+      - VIDEO_SHM_NAME=/video_stream_ring
 
   worker:
     build:
@@ -23,6 +24,7 @@ services:
       - /dev/shm:/dev/shm
     environment:
       - SHM_NAME=/media_stream_ring
+      - VIDEO_SHM_NAME=/video_stream_ring
       - VAD_THRESHOLD=0.015
     depends_on:
       - gateway

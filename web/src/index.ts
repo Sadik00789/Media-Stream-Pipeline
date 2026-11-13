@@ -2,7 +2,7 @@ import { AudioCaptureProcessor } from './audio/processor';
 import { SpectrogramVisualizer } from './audio/visualizer';
 import { VideoCaptureProcessor } from './video/processor';
 import { DetectionOverlayRenderer } from './video/overlay';
-import { bindControls } from './ui/controls';
+import { bindControls, ControlHandle } from './ui/controls';
 import { MetricsRenderer, TelemetryData } from './ui/transcript';
 
 class App {
@@ -11,6 +11,7 @@ class App {
   private visualizer: SpectrogramVisualizer;
   private overlay: DetectionOverlayRenderer;
   private metrics = new MetricsRenderer();
+  private controls!: ControlHandle;
 
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
@@ -43,7 +44,7 @@ class App {
   }
 
   private initControls() {
-    bindControls({
+    this.controls = bindControls({
       onToggleMic: () => this.toggleMicrophone(),
       onToggleCamera: () => this.toggleCamera(),
       onInjectTone: () => this.toggleSyntheticTone(),
@@ -78,6 +79,9 @@ class App {
       };
 
       this.ws.onclose = () => {
+        if (!this.dc || this.dc.readyState !== 'open') {
+          this.updateStatus('Disconnected (Reconnecting...)', false);
+        }
         setTimeout(() => this.initWebSocket(), 2000);
       };
     } catch (err) {
@@ -154,11 +158,13 @@ class App {
     if (this.isAudioStreaming && !this.toneInterval) {
       this.audioProcessor.stop();
       this.isAudioStreaming = false;
+      this.controls.setMicActive(false);
       this.updateStatus('Microphone Stopped', true);
     } else {
       if (this.toneInterval) {
         clearInterval(this.toneInterval);
         this.toneInterval = null;
+        this.controls.setToneActive(false);
       }
       try {
         await this.audioProcessor.start((samples) => {
@@ -179,8 +185,11 @@ class App {
           }
         });
         this.isAudioStreaming = true;
+        this.controls.setMicActive(true);
         this.updateStatus('Microphone Live (16kHz PCM)', true);
       } catch (err) {
+        this.isAudioStreaming = false;
+        this.controls.setMicActive(false);
         console.warn('Microphone start error:', err);
       }
     }
@@ -190,11 +199,13 @@ class App {
     if (this.isVideoStreaming && !this.videoTestInterval) {
       this.videoProcessor.stop();
       this.isVideoStreaming = false;
+      this.controls.setCamActive(false);
       this.updateStatus('Camera Stopped', true);
     } else {
       if (this.videoTestInterval) {
         clearInterval(this.videoTestInterval);
         this.videoTestInterval = null;
+        this.controls.setTestVideoActive(false);
       }
       try {
         await this.videoProcessor.start(this.videoElement, (pixels) => {
@@ -215,8 +226,11 @@ class App {
           }
         });
         this.isVideoStreaming = true;
+        this.controls.setCamActive(true);
         this.updateStatus('Camera Live (640x480 RGB24 @ 30 FPS)', true);
       } catch (err) {
+        this.isVideoStreaming = false;
+        this.controls.setCamActive(false);
         console.warn('Camera start error:', err);
       }
     }
@@ -226,10 +240,18 @@ class App {
     if (this.toneInterval) {
       clearInterval(this.toneInterval);
       this.toneInterval = null;
+      this.controls.setToneActive(false);
       this.updateStatus('Synthetic Tone Stopped', true);
       return;
     }
 
+    if (this.isAudioStreaming) {
+      this.audioProcessor.stop();
+      this.isAudioStreaming = false;
+      this.controls.setMicActive(false);
+    }
+
+    this.controls.setToneActive(true);
     this.updateStatus('Streaming 1kHz Test Signal...', true);
     const samples = new Float32Array(512);
     for (let i = 0; i < 512; i++) {
@@ -259,10 +281,18 @@ class App {
     if (this.videoTestInterval) {
       clearInterval(this.videoTestInterval);
       this.videoTestInterval = null;
+      this.controls.setTestVideoActive(false);
       this.updateStatus('Test Pattern Stopped', true);
       return;
     }
 
+    if (this.isVideoStreaming) {
+      this.videoProcessor.stop();
+      this.isVideoStreaming = false;
+      this.controls.setCamActive(false);
+    }
+
+    this.controls.setTestVideoActive(true);
     this.updateStatus('Streaming Synthetic Video Pattern (30 FPS)...', true);
     let frameNum = 0;
 

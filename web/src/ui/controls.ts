@@ -11,44 +11,64 @@ export interface ControlCallbacks {
   onColorMapChange: (map: string) => void;
 }
 
-export function bindControls(callbacks: ControlCallbacks) {
-  const toggleMicBtn = document.getElementById('toggleMicBtn') as HTMLButtonElement;
-  const toggleMicText = document.getElementById('toggleMicText') as HTMLElement;
+export interface ControlHandle {
+  setMicActive: (active: boolean) => void;
+  setCamActive: (active: boolean) => void;
+  setToneActive: (active: boolean) => void;
+  setTestVideoActive: (active: boolean) => void;
+}
 
-  const toggleCamBtn = document.getElementById('toggleCamBtn') as HTMLButtonElement;
-  const toggleCamText = document.getElementById('toggleCamText') as HTMLElement;
+export function bindControls(callbacks: ControlCallbacks): ControlHandle {
+  const toggleMicBtn = document.getElementById('toggleMicBtn') as HTMLButtonElement | null;
+  const toggleMicText = document.getElementById('toggleMicText') as HTMLElement | null;
 
-  const testToneBtn = document.getElementById('testToneBtn') as HTMLButtonElement;
-  const testVideoBtn = document.getElementById('testVideoBtn') as HTMLButtonElement;
+  const toggleCamBtn = document.getElementById('toggleCamBtn') as HTMLButtonElement | null;
+  const toggleCamText = document.getElementById('toggleCamText') as HTMLElement | null;
 
-  const gainSlider = document.getElementById('gainSlider') as HTMLInputElement;
-  const gainValue = document.getElementById('gainValue') as HTMLElement;
-  const colorMapSelect = document.getElementById('colorMapSelect') as HTMLSelectElement;
+  const testToneBtn = document.getElementById('testToneBtn') as HTMLButtonElement | null;
+  const testVideoBtn = document.getElementById('testVideoBtn') as HTMLButtonElement | null;
 
-  let isMicActive = false;
-  let isCamActive = false;
+  const gainSlider = document.getElementById('gainSlider') as HTMLInputElement | null;
+  const gainValue = document.getElementById('gainValue') as HTMLElement | null;
+  const colorMapSelect = document.getElementById('colorMapSelect') as HTMLSelectElement | null;
+
+  const setMicActive = (active: boolean) => {
+    if (toggleMicBtn) {
+      toggleMicBtn.classList.toggle('danger', active);
+    }
+    if (toggleMicText) {
+      toggleMicText.textContent = active ? 'Stop Microphone' : 'Start Microphone';
+    }
+  };
+
+  const setCamActive = (active: boolean) => {
+    if (toggleCamBtn) {
+      toggleCamBtn.classList.toggle('danger', active);
+    }
+    if (toggleCamText) {
+      toggleCamText.textContent = active ? 'Stop Camera' : 'Start Camera';
+    }
+  };
+
+  const setToneActive = (active: boolean) => {
+    if (testToneBtn) {
+      testToneBtn.classList.toggle('danger', active);
+      testToneBtn.classList.toggle('secondary', !active);
+    }
+  };
+
+  const setTestVideoActive = (active: boolean) => {
+    if (testVideoBtn) {
+      testVideoBtn.classList.toggle('danger', active);
+      testVideoBtn.classList.toggle('secondary', !active);
+    }
+  };
 
   toggleMicBtn?.addEventListener('click', () => {
-    isMicActive = !isMicActive;
-    if (isMicActive) {
-      toggleMicBtn.classList.add('danger');
-      if (toggleMicText) toggleMicText.textContent = 'Stop Microphone';
-    } else {
-      toggleMicBtn.classList.remove('danger');
-      if (toggleMicText) toggleMicText.textContent = 'Start Microphone';
-    }
     callbacks.onToggleMic();
   });
 
   toggleCamBtn?.addEventListener('click', () => {
-    isCamActive = !isCamActive;
-    if (isCamActive) {
-      toggleCamBtn.classList.add('danger');
-      if (toggleCamText) toggleCamText.textContent = 'Stop Camera';
-    } else {
-      toggleCamBtn.classList.remove('danger');
-      if (toggleCamText) toggleCamText.textContent = 'Start Camera';
-    }
     callbacks.onToggleCamera();
   });
 
@@ -70,4 +90,11 @@ export function bindControls(callbacks: ControlCallbacks) {
     const val = (e.target as HTMLSelectElement).value;
     callbacks.onColorMapChange(val);
   });
+
+  return {
+    setMicActive,
+    setCamActive,
+    setToneActive,
+    setTestVideoActive,
+  };
 }

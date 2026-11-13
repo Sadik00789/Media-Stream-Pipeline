@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "esbuild tests/frontend.test.ts --bundle --platform=node --format=esm --outfile=.vite/frontend.test.mjs && node --test .vite/frontend.test.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
