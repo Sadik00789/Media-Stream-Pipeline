@@ -1,36 +1,40 @@
-use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
 use std::ffi::c_void;
-use std::fs::OpenOptions;
-use std::num::NonZeroUsize;
-use std::os::unix::fs::OpenOptionsExt;
+use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
-use std::ptr::NonNull;
 use tensor_bridge::ffi::{
-    AudioFramePacket, SharedMemoryRingBuffer, SharedMemoryVideoRingBuffer,
-    VideoFramePacket, SHM_MAGIC, SHM_RING_CAPACITY, SHM_VERSION,
-    VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC, VIDEO_SHM_VERSION,
+    AudioFramePacket, SharedMemoryRingBuffer, SharedMemoryVideoRingBuffer, VideoFramePacket,
+    SHM_MAGIC, SHM_RING_CAPACITY, SHM_VERSION, VIDEO_RING_CAPACITY, VIDEO_SHM_MAGIC,
+    VIDEO_SHM_VERSION,
 };
 use tensor_bridge::ring_buffer::{ShmRingBufferReader, ShmVideoRingBufferReader};
 use tracing::info;
 
-pub struct ShmContext {
-    ptr: *mut SharedMemoryRingBuffer,
-    size: usize,
-}
+#[cfg(unix)]
+mod platform {
+    use super::*;
+    use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
+    use std::num::NonZeroUsize;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::ptr::NonNull;
 
-impl ShmContext {
-    pub fn attach(shm_name: &str) -> Result<(Self, ShmRingBufferReader), String> {
+    pub struct MmapRegion {
+        pub ptr: *mut c_void,
+        pub size: usize,
+        _file: File,
+    }
+
+    pub fn shm_path(shm_name: &str) -> PathBuf {
         let clean_name = shm_name.trim_start_matches('/');
-        let shm_path = PathBuf::from("/dev/shm").join(clean_name);
+        PathBuf::from("/dev/shm").join(clean_name)
+    }
 
-        let size = std::mem::size_of::<SharedMemoryRingBuffer>();
-
+    pub fn map_file(shm_path: &PathBuf, size: usize) -> Result<MmapRegion, String> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .mode(0o666)
-            .open(&shm_path)
+            .open(shm_path)
             .map_err(|e| format!("Failed to open shared memory file '{}': {}", shm_path.display(), e))?;
 
         let metadata = file
@@ -44,7 +48,6 @@ impl ShmContext {
         }
 
         let non_zero_size = NonZeroUsize::new(size).ok_or("Invalid SHM struct size")?;
-
         let mmap_ptr = unsafe {
             mmap(
                 None,
@@ -57,7 +60,148 @@ impl ShmContext {
             .map_err(|e| format!("Failed to mmap shared memory segment: {}", e))?
         };
 
-        let ring_ptr = mmap_ptr.as_ptr() as *mut SharedMemoryRingBuffer;
+        Ok(MmapRegion {
+            ptr: mmap_ptr.as_ptr(),
+            size,
+            _file: file,
+        })
+    }
+
+    impl Drop for MmapRegion {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                if let Some(non_null) = NonNull::new(self.ptr) {
+                    unsafe {
+                        let _ = munmap(non_null, self.size);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+mod platform {
+    use super::*;
+    use std::os::windows::io::AsRawHandle;
+    use std::ptr;
+
+    const PAGE_READWRITE: u32 = 0x04;
+    const FILE_MAP_ALL_ACCESS: u32 = 0x000F001F;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateFileMappingW(
+            h_file: *mut c_void,
+            lp_file_mapping_attributes: *const c_void,
+            fl_protect: u32,
+            dw_maximum_size_high: u32,
+            dw_maximum_size_low: u32,
+            lp_name: *const u16,
+        ) -> *mut c_void;
+        fn MapViewOfFile(
+            h_file_mapping_object: *mut c_void,
+            dw_desired_access: u32,
+            dw_file_offset_high: u32,
+            dw_file_offset_low: u32,
+            dw_number_of_bytes_to_map: usize,
+        ) -> *mut c_void;
+        fn UnmapViewOfFile(lp_base_address: *const c_void) -> i32;
+        fn CloseHandle(h_object: *mut c_void) -> i32;
+    }
+
+    pub struct MmapRegion {
+        pub ptr: *mut c_void,
+        mapping_handle: *mut c_void,
+        _file: File,
+    }
+
+    pub fn shm_path(shm_name: &str) -> PathBuf {
+        let clean_name = shm_name.trim_start_matches('/');
+        std::env::temp_dir().join(clean_name)
+    }
+
+    pub fn map_file(shm_path: &PathBuf, size: usize) -> Result<MmapRegion, String> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(shm_path)
+            .map_err(|e| format!("Failed to open shared memory file '{}': {}", shm_path.display(), e))?;
+
+        let metadata = file
+            .metadata()
+            .map_err(|e| format!("Failed to get shm metadata: {}", e))?;
+
+        if metadata.len() < size as u64 {
+            file.set_len(size as u64)
+                .map_err(|e| format!("Failed to set shm size to {} bytes: {}", size, e))?;
+            info!("Initialized shared memory file '{}' with size {} bytes", shm_path.display(), size);
+        }
+
+        let high = ((size as u64) >> 32) as u32;
+        let low = (size as u64) as u32;
+        let mapping_handle = unsafe {
+            CreateFileMappingW(
+                file.as_raw_handle(),
+                ptr::null(),
+                PAGE_READWRITE,
+                high,
+                low,
+                ptr::null(),
+            )
+        };
+        if mapping_handle.is_null() {
+            return Err(format!(
+                "CreateFileMappingW failed for '{}': {}",
+                shm_path.display(),
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        let view_ptr = unsafe { MapViewOfFile(mapping_handle, FILE_MAP_ALL_ACCESS, 0, 0, size) };
+        if view_ptr.is_null() {
+            unsafe {
+                CloseHandle(mapping_handle);
+            }
+            return Err(format!(
+                "MapViewOfFile failed for '{}': {}",
+                shm_path.display(),
+                std::io::Error::last_os_error()
+            ));
+        }
+
+        Ok(MmapRegion {
+            ptr: view_ptr,
+            mapping_handle,
+            _file: file,
+        })
+    }
+
+    impl Drop for MmapRegion {
+        fn drop(&mut self) {
+            unsafe {
+                if !self.ptr.is_null() {
+                    let _ = UnmapViewOfFile(self.ptr);
+                }
+                if !self.mapping_handle.is_null() {
+                    let _ = CloseHandle(self.mapping_handle);
+                }
+            }
+        }
+    }
+}
+
+pub struct ShmContext {
+    _region: platform::MmapRegion,
+}
+
+impl ShmContext {
+    pub fn attach(shm_name: &str) -> Result<(Self, ShmRingBufferReader), String> {
+        let shm_path = platform::shm_path(shm_name);
+        let size = std::mem::size_of::<SharedMemoryRingBuffer>();
+        let region = platform::map_file(&shm_path, size)?;
+        let ring_ptr = region.ptr as *mut SharedMemoryRingBuffer;
 
         // Initialize header if magic is uninitialized
         unsafe {
@@ -78,73 +222,20 @@ impl ShmContext {
                 .map_err(|e| format!("Failed to initialize SHM reader: {}", e))?
         };
 
-        Ok((
-            Self {
-                ptr: ring_ptr,
-                size,
-            },
-            reader,
-        ))
-    }
-}
-
-impl Drop for ShmContext {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            if let Some(non_null) = NonNull::new(self.ptr as *mut c_void) {
-                unsafe {
-                    let _ = munmap(non_null, self.size);
-                }
-            }
-        }
+        Ok((Self { _region: region }, reader))
     }
 }
 
 pub struct VideoShmContext {
-    ptr: *mut SharedMemoryVideoRingBuffer,
-    size: usize,
+    _region: platform::MmapRegion,
 }
 
 impl VideoShmContext {
     pub fn attach(shm_name: &str) -> Result<(Self, ShmVideoRingBufferReader), String> {
-        let clean_name = shm_name.trim_start_matches('/');
-        let shm_path = PathBuf::from("/dev/shm").join(clean_name);
-
+        let shm_path = platform::shm_path(shm_name);
         let size = std::mem::size_of::<SharedMemoryVideoRingBuffer>();
-
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .mode(0o666)
-            .open(&shm_path)
-            .map_err(|e| format!("Failed to open video shared memory file '{}': {}", shm_path.display(), e))?;
-
-        let metadata = file
-            .metadata()
-            .map_err(|e| format!("Failed to get video shm metadata: {}", e))?;
-
-        if metadata.len() < size as u64 {
-            file.set_len(size as u64)
-                .map_err(|e| format!("Failed to set video shm size to {} bytes: {}", size, e))?;
-            info!("Initialized video shared memory file '{}' with size {} bytes", shm_path.display(), size);
-        }
-
-        let non_zero_size = NonZeroUsize::new(size).ok_or("Invalid Video SHM struct size")?;
-
-        let mmap_ptr = unsafe {
-            mmap(
-                None,
-                non_zero_size,
-                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED,
-                &file,
-                0,
-            )
-            .map_err(|e| format!("Failed to mmap video shared memory segment: {}", e))?
-        };
-
-        let ring_ptr = mmap_ptr.as_ptr() as *mut SharedMemoryVideoRingBuffer;
+        let region = platform::map_file(&shm_path, size)?;
+        let ring_ptr = region.ptr as *mut SharedMemoryVideoRingBuffer;
 
         // Initialize header if magic is uninitialized
         unsafe {
@@ -165,24 +256,33 @@ impl VideoShmContext {
                 .map_err(|e| format!("Failed to initialize Video SHM reader: {}", e))?
         };
 
-        Ok((
-            Self {
-                ptr: ring_ptr,
-                size,
-            },
-            reader,
-        ))
+        Ok((Self { _region: region }, reader))
     }
 }
 
-impl Drop for VideoShmContext {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            if let Some(non_null) = NonNull::new(self.ptr as *mut c_void) {
-                unsafe {
-                    let _ = munmap(non_null, self.size);
-                }
-            }
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_audio_and_video_shm_context_attach() {
+        let pid = std::process::id();
+        let audio_name = format!("/test_audio_shm_{}", pid);
+        let video_name = format!("/test_video_shm_{}", pid);
+
+        let (_audio_ctx, mut audio_reader) =
+            ShmContext::attach(&audio_name).expect("Audio SHM attach failed");
+        assert_eq!(audio_reader.write_head(), 0);
+        assert_eq!(audio_reader.read_head(), 0);
+        assert!(audio_reader.poll_next_packet().is_none());
+
+        let (_video_ctx, mut video_reader) =
+            VideoShmContext::attach(&video_name).expect("Video SHM attach failed");
+        assert_eq!(video_reader.write_head(), 0);
+        assert_eq!(video_reader.read_head(), 0);
+        assert!(video_reader.poll_next_packet().is_none());
+
+        let _ = std::fs::remove_file(platform::shm_path(&audio_name));
+        let _ = std::fs::remove_file(platform::shm_path(&video_name));
     }
 }

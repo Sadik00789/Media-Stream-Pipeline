@@ -3,24 +3,42 @@ pub mod memory;
 pub mod pyo3_bindings;
 pub mod ring_buffer;
 
-use ffi::{dsp_init, dsp_process_frame, simd_fast_box_nms, simd_rgb24_to_planar_f32, AudioFramePacket, DetectionBox};
-use std::sync::atomic::{AtomicBool, Ordering};
+use ffi::{
+    dsp_configure, dsp_init, dsp_process_frame, simd_fast_box_nms, simd_rgb24_to_planar_f32,
+    AudioFramePacket, DetectionBox, DspConfig, DspWindowType,
+};
+use std::sync::Mutex;
 
-static DSP_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static DSP_INITIALIZED: Mutex<bool> = Mutex::new(false);
 
 /// Safe RAII wrapper around C11 Hardware DSP Engine
 pub struct DspEngine;
 
 impl DspEngine {
     pub fn new() -> Result<Self, &'static str> {
-        if !DSP_INITIALIZED.swap(true, Ordering::SeqCst) {
+        let mut init_guard = DSP_INITIALIZED
+            .lock()
+            .map_err(|_| "DSP initialization mutex poisoned")?;
+        if !*init_guard {
             let res = unsafe { dsp_init() };
             if res != 0 {
-                DSP_INITIALIZED.store(false, Ordering::SeqCst);
                 return Err("Failed to initialize C DSP subsystem");
             }
+            *init_guard = true;
         }
         Ok(Self)
+    }
+
+    /// Configure runtime DSP parameters (VAD threshold, window function, sample rate).
+    pub fn configure(&self, vad_threshold: f32, window_type: DspWindowType, sample_rate: u32) {
+        let cfg = DspConfig {
+            vad_threshold,
+            window_type,
+            sample_rate,
+        };
+        unsafe {
+            dsp_configure(&cfg as *const DspConfig);
+        }
     }
 
     /// Process single audio packet in-place: SIMD windowing + FFT + VAD
@@ -105,5 +123,48 @@ mod tests {
         ];
         let filtered = VisionSimd::fast_box_nms(&boxes, 0.45, 10);
         assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn test_abi_struct_sizes_and_dsp_configure() {
+        assert_eq!(std::mem::size_of::<DetectionBox>(), 24);
+        assert_eq!(std::mem::size_of::<AudioFramePacket>(), 3248);
+        assert_eq!(std::mem::size_of::<ffi::VideoFramePacket>(), 922024);
+        assert_eq!(
+            std::mem::size_of::<ffi::SharedMemoryRingBuffer>(),
+            48 + 64 * 3248
+        );
+        assert_eq!(
+            std::mem::size_of::<ffi::SharedMemoryVideoRingBuffer>(),
+            48 + 8 * 922024
+        );
+
+        let engine = DspEngine::new().expect("DSP init");
+        engine.configure(0.02, DspWindowType::DSP_WINDOW_BLACKMAN, 16000);
+        let mut packet = AudioFramePacket {
+            sequence_number: 2,
+            sample_rate: 16000,
+            channels: 1,
+            sample_count: FRAME_SAMPLES as u32,
+            ..Default::default()
+        };
+        for i in 0..(FRAME_SAMPLES as usize) {
+            packet.pcm_data[i] = 0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
+        }
+        engine.process_frame(&mut packet);
+        let flags = { packet.flags };
+        assert_ne!(flags & ffi::FLAG_DSP_DONE, 0);
+        assert_eq!({ packet.vad_active }, 1);
+        engine.configure(0.015, DspWindowType::DSP_WINDOW_HAMMING, 16000);
+    }
+
+    #[test]
+    fn test_concurrent_dsp_engine_init() {
+        let handles: Vec<_> = (0..4)
+            .map(|_| std::thread::spawn(|| DspEngine::new().is_ok()))
+            .collect();
+        for h in handles {
+            assert!(h.join().unwrap());
+        }
     }
 }

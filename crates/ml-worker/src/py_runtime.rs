@@ -10,7 +10,7 @@ pub struct PyRuntimeManager {
 }
 
 impl PyRuntimeManager {
-    pub fn init(_model_path: &str) -> Result<Self, String> {
+    pub fn init(model_path: &str) -> Result<Self, String> {
         info!("Initializing embedded Python Audio ML runtime (PyO3)...");
 
         Python::with_gil(|py| {
@@ -68,7 +68,9 @@ impl PyRuntimeManager {
                 engine_class.call0()
                     .map_err(|e| format!("Failed to call StreamingAsrEngine(): {:?}", e))?
             } else if let Ok(engine_class) = module.getattr("StreamingInferenceEngine") {
-                engine_class.call0()
+                let kwargs = PyDict::new_bound(py);
+                let _ = kwargs.set_item("model_path", model_path);
+                engine_class.call((), Some(&kwargs))
                     .map_err(|e| format!("Failed to call StreamingInferenceEngine(): {:?}", e))?
             } else {
                 return Err("Failed to find engine class in audio ML module".to_string());

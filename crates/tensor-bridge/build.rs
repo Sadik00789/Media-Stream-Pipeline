@@ -164,11 +164,16 @@ fn main() {
     let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
     let dsp_dir = repo_root.join("dsp");
     let dsp_build_dir = dsp_dir.join("build");
+    let dsp_release_dir = dsp_build_dir.join("Release");
     let include_dir = repo_root.join("include");
     let dsp_include_dir = dsp_dir.join("include");
 
+    let has_dsp_lib = dsp_build_dir.join("libdsp_core.a").exists()
+        || dsp_build_dir.join("dsp_core.lib").exists()
+        || dsp_release_dir.join("dsp_core.lib").exists();
+
     // Automatically build C DSP library if not present
-    if !dsp_build_dir.join("libdsp_core.a").exists() {
+    if !has_dsp_lib {
         let status = Command::new("cmake")
             .args(["-B", "build", "-DCMAKE_BUILD_TYPE=Release"])
             .current_dir(&dsp_dir)
@@ -177,21 +182,37 @@ fn main() {
         assert!(status.success(), "CMake configuration failed");
 
         let build_status = Command::new("cmake")
-            .args(["--build", "build"])
+            .args(["--build", "build", "--config", "Release"])
             .current_dir(&dsp_dir)
             .status()
             .expect("Failed to build dsp_core");
         assert!(build_status.success(), "CMake build failed");
     }
 
+    if dsp_release_dir.exists() {
+        println!("cargo:rustc-link-search=native={}", dsp_release_dir.display());
+    }
     println!("cargo:rustc-link-search=native={}", dsp_build_dir.display());
     println!("cargo:rustc-link-lib=static=dsp_core");
-    println!("cargo:rustc-link-lib=m");
 
-    // Search common Linux python3 shared object directories
-    println!("cargo:rustc-link-search=native=/usr/lib/python3.14/config-3.14-x86_64-linux-gnu");
-    println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
-    println!("cargo:rustc-link-search=native=/usr/local/lib");
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os != "windows" {
+        println!("cargo:rustc-link-lib=m");
+        // Search common Linux python3 shared object directories
+        println!("cargo:rustc-link-search=native=/usr/lib/python3.14/config-3.14-x86_64-linux-gnu");
+        println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
+        println!("cargo:rustc-link-search=native=/usr/local/lib");
+    } else if let Ok(output) = Command::new("python")
+        .args(["-c", "import sys, os; print(os.path.join(sys.base_prefix, 'libs'))"])
+        .output()
+    {
+        if output.status.success() {
+            let py_libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !py_libs.is_empty() {
+                println!("cargo:rustc-link-search=native={}", py_libs);
+            }
+        }
+    }
 
     println!("cargo:rerun-if-changed={}", include_dir.join("ipc_protocol.h").display());
     println!("cargo:rerun-if-changed={}", dsp_include_dir.join("dsp_core.h").display());
@@ -206,6 +227,7 @@ fn main() {
             .header(dsp_include_dir.join("simd_vision.h").to_str().unwrap())
             .clang_arg(format!("-I{}", include_dir.display()))
             .clang_arg(format!("-I{}", dsp_include_dir.display()))
+            .rustified_enum("DspWindowType")
             .derive_default(true)
             .derive_copy(true)
             .derive_debug(true)

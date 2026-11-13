@@ -41,3 +41,31 @@ pub fn slice_to_pybytes<'py>(
 ) -> Bound<'py, PyBytes> {
     PyBytes::new_bound(py, slice)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use numpy::PyUntypedArrayMethods;
+    use pyo3::types::PyAnyMethods;
+
+    #[test]
+    fn test_pyo3_slice_and_video_array_bindings() {
+        Python::with_gil(|py| {
+            let pcm = [0.25f32, -0.5f32, 0.75f32];
+            let list = slice_to_pylist(py, &pcm);
+            assert_eq!(list.len(), 3);
+            let first: f32 = list.get_item(0).unwrap().extract().unwrap();
+            assert!((first - 0.25).abs() < 1e-6);
+
+            let raw_list = unsafe { raw_ptr_to_pylist(py, pcm.as_ptr(), pcm.len()) };
+            assert_eq!(raw_list.len(), 3);
+
+            let bytes = slice_to_pybytes(py, &[1u8, 2, 3, 4]);
+            assert_eq!(bytes.as_bytes(), &[1u8, 2, 3, 4]);
+
+            let pixels = vec![128u8; 640 * 480 * 3];
+            let arr = as_pyarray_video(py, &pixels).expect("PyArray3 reshape failed");
+            assert_eq!(arr.shape(), [480, 640, 3]);
+        });
+    }
+}
