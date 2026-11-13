@@ -1,15 +1,25 @@
 #include "simd_fft.h"
 #include <math.h>
-#include <immintrin.h>
 #include <stdint.h>
+#if defined(__AVX2__) || defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#endif
+
+#ifndef DSP_ALIGNED
+#if defined(_MSC_VER)
+#define DSP_ALIGNED(n) __declspec(align(n))
+#else
+#define DSP_ALIGNED(n) __attribute__((aligned(n)))
+#endif
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-static float s_cos_table[FFT_SIZE / 2] __attribute__((aligned(32)));
-static float s_sin_table[FFT_SIZE / 2] __attribute__((aligned(32)));
-static uint16_t s_bit_rev[FFT_SIZE] __attribute__((aligned(32)));
+DSP_ALIGNED(32) static float s_cos_table[FFT_SIZE / 2];
+DSP_ALIGNED(32) static float s_sin_table[FFT_SIZE / 2];
+DSP_ALIGNED(32) static uint16_t s_bit_rev[FFT_SIZE];
 static int s_fft_initialized = 0;
 
 static uint16_t reverse_bits(uint16_t x, int bits) {
@@ -67,13 +77,16 @@ static inline __m256 fast_log_avx2(__m256 x) {
 
 void dsp_fft_512_avx2(float* real_in, float* imag_scratch, float* out_spectrogram) {
     (void)imag_scratch;
+    if (!real_in || !out_spectrogram) {
+        return;
+    }
     if (!s_fft_initialized) {
         dsp_fft_init();
     }
 
     // 1. In-place bit-reversal permutation into temporary buffer
-    float temp_re[FFT_SIZE] __attribute__((aligned(32)));
-    float temp_im[FFT_SIZE] __attribute__((aligned(32)));
+    DSP_ALIGNED(32) float temp_re[FFT_SIZE];
+    DSP_ALIGNED(32) float temp_im[FFT_SIZE];
 
     for (int i = 0; i < FFT_SIZE; i++) {
         int rev = s_bit_rev[i];

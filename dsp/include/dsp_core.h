@@ -16,6 +16,14 @@
 extern "C" {
 #endif
 
+#ifndef DSP_ALIGNED
+#if defined(_MSC_VER)
+#define DSP_ALIGNED(n) __declspec(align(n))
+#else
+#define DSP_ALIGNED(n) __attribute__((aligned(n)))
+#endif
+#endif
+
 typedef struct {
     float vad_threshold;
     DspWindowType window_type;

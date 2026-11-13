@@ -1,6 +1,16 @@
 #include "windowing.h"
 #include <math.h>
+#if defined(__AVX2__) || defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#endif
+
+#ifndef DSP_ALIGNED
+#if defined(_MSC_VER)
+#define DSP_ALIGNED(n) __declspec(align(n))
+#else
+#define DSP_ALIGNED(n) __attribute__((aligned(n)))
+#endif
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -8,9 +18,9 @@
 
 #define WINDOW_SIZE 512
 
-static float s_hamming_table[WINDOW_SIZE] __attribute__((aligned(32)));
-static float s_hanning_table[WINDOW_SIZE] __attribute__((aligned(32)));
-static float s_blackman_table[WINDOW_SIZE] __attribute__((aligned(32)));
+DSP_ALIGNED(32) static float s_hamming_table[WINDOW_SIZE];
+DSP_ALIGNED(32) static float s_hanning_table[WINDOW_SIZE];
+DSP_ALIGNED(32) static float s_blackman_table[WINDOW_SIZE];
 static int s_initialized = 0;
 
 void dsp_window_init(void) {
@@ -33,7 +43,7 @@ void dsp_window_init(void) {
 }
 
 void dsp_apply_window_simd(float* data, DspWindowType window_type) {
-    if (window_type == DSP_WINDOW_RECTANGULAR) {
+    if (!data || window_type == DSP_WINDOW_RECTANGULAR) {
         return;
     }
 

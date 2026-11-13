@@ -48,7 +48,7 @@ void simd_rgb24_to_planar_f32(const uint8_t* rgb_in, float* planar_out, int widt
         
         vst1q_f32(&g_plane[i + 0], vmulq_f32(vcvtq_f32_u32(vmovl_u16(vget_low_u16(g_u16_low))), vscale));
         vst1q_f32(&g_plane[i + 4], vmulq_f32(vcvtq_f32_u32(vmovl_u16(vget_high_u16(g_u16_low))), vscale));
-        vst1q_f32(&g_plane[i + 8], vmulq_f32(vcvtq_f32_u32(vmovl_u16(vget_high_u16(g_u16_high))), vscale));
+        vst1q_f32(&g_plane[i + 8], vmulq_f32(vcvtq_f32_u32(vmovl_u16(vget_low_u16(g_u16_high))), vscale));
         vst1q_f32(&g_plane[i + 12], vmulq_f32(vcvtq_f32_u32(vmovl_u16(vget_high_u16(g_u16_high))), vscale));
 
         // Process B channel

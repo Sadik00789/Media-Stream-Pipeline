@@ -1,6 +1,8 @@
 #include "simd_vad.h"
 #include <math.h>
+#if defined(__AVX2__) || defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#endif
 
 #define SAMPLES 512
 
@@ -13,6 +15,9 @@ void dsp_vad_init(void) {
 }
 
 float dsp_compute_rms_energy_avx2(const float* pcm) {
+    if (!pcm) {
+        return 0.0f;
+    }
 #if defined(__AVX2__)
     __m256 sum_sq = _mm256_setzero_ps();
 
@@ -44,6 +49,13 @@ float dsp_compute_rms_energy_avx2(const float* pcm) {
 uint32_t dsp_vad_decision(float energy, float base_threshold, float* out_confidence) {
     if (!s_vad_initialized) {
         dsp_vad_init();
+    }
+
+    if (!isfinite(energy) || energy < 0.0f) {
+        energy = 0.0f;
+    }
+    if (!isfinite(base_threshold) || base_threshold < 0.0f) {
+        base_threshold = 0.015f;
     }
 
     // Adaptive noise floor tracking (minimum statistics tracker)

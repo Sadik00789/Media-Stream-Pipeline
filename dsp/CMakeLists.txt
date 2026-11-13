@@ -9,7 +9,11 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 include(FindSIMD)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -Wall -Wextra -pedantic ${SIMD_C_FLAGS}")
+if(MSVC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /O2 /W4 ${SIMD_C_FLAGS}")
+else()
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -Wall -Wextra -pedantic ${SIMD_C_FLAGS}")
+endif()
 add_definitions(${SIMD_DEFINITIONS})
 
 include_directories(
@@ -29,17 +33,19 @@ set(DSP_SOURCES
 
 # Compile static library
 add_library(dsp_core STATIC ${DSP_SOURCES})
-target_link_libraries(dsp_core PUBLIC m)
+if(NOT WIN32)
+    target_link_libraries(dsp_core PUBLIC m)
+endif()
 
 # Unit Tests
 add_executable(test_fft tests/test_fft.c)
-target_link_libraries(test_fft PRIVATE dsp_core m)
+target_link_libraries(test_fft PRIVATE dsp_core)
 
 add_executable(test_vad tests/test_vad.c)
-target_link_libraries(test_vad PRIVATE dsp_core m)
+target_link_libraries(test_vad PRIVATE dsp_core)
 
 add_executable(test_vision tests/test_vision.c)
-target_link_libraries(test_vision PRIVATE dsp_core m)
+target_link_libraries(test_vision PRIVATE dsp_core)
 
 enable_testing()
 add_test(NAME test_fft COMMAND test_fft)

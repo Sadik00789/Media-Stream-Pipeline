@@ -84,7 +84,7 @@ typedef struct {
 /**
  * @struct VideoFramePacket
  * @brief Represents a single 640x480 RGB24 video frame with vision detection metadata.
- * Total size: 32 + 16*24 + 921600 = 922016 bytes.
+ * Total size: 40 + 16*24 + 921600 = 922024 bytes.
  */
 typedef struct {
     uint64_t sequence_number;            /* Offset 0   (8 bytes) */
