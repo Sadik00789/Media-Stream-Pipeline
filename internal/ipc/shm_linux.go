@@ -10,47 +10,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	FrameSamples    = 512
-	SpectrogramBins = 256
-	RingCapacity    = 64
-	ShmMagic        = 0x4D535452
-	ShmVersion      = 1
-
-	FlagIngested  = 1 << 0
-	FlagDspDone   = 1 << 1
-	FlagMlDone    = 1 << 2
-	FlagBroadcast = 1 << 3
-)
-
-type AudioFramePacket struct {
-	SequenceNumber uint64
-	TimestampNs    uint64
-	SampleRate     uint32
-	Channels       uint32
-	SampleCount    uint32
-	VadActive      uint32
-	VadConfidence  float32
-	MlConfidence   float32
-	Flags          uint32
-	Reserved       uint32
-	PcmData        [FrameSamples]float32
-	Spectrogram    [SpectrogramBins]float32
-	MlTranscript   [128]byte
-}
-
-type SharedMemoryRingBuffer struct {
-	Magic          uint32
-	Version        uint32
-	BufferCapacity uint32
-	PacketSize     uint32
-	WriteHead      uint64
-	ReadHead       uint64
-	DroppedFrames  uint64
-	OverrunCount   uint64
-	Packets        [RingCapacity]AudioFramePacket
-}
-
 type ShmHandle struct {
 	Name    string
 	ShmPath string
@@ -70,9 +29,16 @@ func CreateOrOpenShm(name string) (*ShmHandle, error) {
 		return nil, fmt.Errorf("open failed for %s: %w", shmPath, err)
 	}
 
-	if err := unix.Ftruncate(fd, int64(size)); err != nil {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
 		_ = unix.Close(fd)
-		return nil, fmt.Errorf("ftruncate failed for %s: %w", shmPath, err)
+		return nil, fmt.Errorf("fstat failed for %s: %w", shmPath, err)
+	}
+	if st.Size < int64(size) {
+		if err := unix.Ftruncate(fd, int64(size)); err != nil {
+			_ = unix.Close(fd)
+			return nil, fmt.Errorf("ftruncate failed for %s: %w", shmPath, err)
+		}
 	}
 
 	data, err := unix.Mmap(fd, 0, size, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)

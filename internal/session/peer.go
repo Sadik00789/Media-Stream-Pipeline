@@ -28,9 +28,18 @@ func (p *Peer) SetDataChannel(dc *webrtc.DataChannel) {
 	p.DataChannel = dc
 }
 
+func (p *Peer) Active() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.IsActive
+}
+
 func (p *Peer) SendData(data []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !p.IsActive {
+		return nil
+	}
 	if p.DataChannel != nil && p.DataChannel.ReadyState() == webrtc.DataChannelStateOpen {
 		return p.DataChannel.Send(data)
 	}

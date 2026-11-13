@@ -1,6 +1,7 @@
 package ipc
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -8,6 +9,7 @@ import (
 type RingBufferWriter struct {
 	handle *ShmHandle
 	seq    uint64
+	mu     sync.Mutex
 }
 
 func NewRingBufferWriter(handle *ShmHandle) *RingBufferWriter {
@@ -19,21 +21,31 @@ func NewRingBufferWriter(handle *ShmHandle) *RingBufferWriter {
 
 // WriteAudioFrame writes a 512-sample float32 PCM frame to the shared memory ring buffer.
 func (w *RingBufferWriter) WriteAudioFrame(pcm []float32, sampleRate int) (uint64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	ring := w.handle.Ring
 	wHead := atomic.LoadUint64(&ring.WriteHead)
-	rHead := atomic.LoadUint64(&ring.ReadHead)
 
-	// Check if writer wrapped around reader (overrun handling)
-	if wHead >= rHead+uint64(RingCapacity) {
+	// Check if writer wrapped around reader (CAS-protected overrun handling)
+	for {
+		rHead := atomic.LoadUint64(&ring.ReadHead)
+		if wHead < rHead+uint64(RingCapacity) {
+			break
+		}
 		newR := wHead - uint64(RingCapacity) + 1
-		dropped := newR - rHead
-		atomic.AddUint64(&ring.DroppedFrames, dropped)
-		atomic.AddUint64(&ring.OverrunCount, 1)
-		atomic.StoreUint64(&ring.ReadHead, newR)
+		if atomic.CompareAndSwapUint64(&ring.ReadHead, rHead, newR) {
+			atomic.AddUint64(&ring.DroppedFrames, newR-rHead)
+			atomic.AddUint64(&ring.OverrunCount, 1)
+			break
+		}
 	}
 
 	slot := int(wHead % uint64(RingCapacity))
 	packet := &ring.Packets[slot]
+
+	// Clear Flags before mutating fields so readers never observe stale completion flags
+	atomic.StoreUint32(&packet.Flags, 0)
 
 	w.seq++
 	packet.SequenceNumber = w.seq
@@ -41,7 +53,10 @@ func (w *RingBufferWriter) WriteAudioFrame(pcm []float32, sampleRate int) (uint6
 	packet.SampleRate = uint32(sampleRate)
 	packet.Channels = 1
 	packet.SampleCount = uint32(len(pcm))
-	packet.Flags = FlagIngested
+	packet.VadActive = 0
+	packet.VadConfidence = 0
+	packet.MlConfidence = 0
+	packet.MlTranscript[0] = 0
 
 	// Fast copy into fixed float32 buffer
 	copyLen := len(pcm)
@@ -55,12 +70,13 @@ func (w *RingBufferWriter) WriteAudioFrame(pcm []float32, sampleRate int) (uint6
 		packet.PcmData[i] = 0.0
 	}
 
+	atomic.StoreUint32(&packet.Flags, FlagIngested)
 	// Atomically commit write cursor
 	atomic.StoreUint64(&ring.WriteHead, wHead+1)
 	return w.seq, nil
 }
 
-// ReadLatestProcessedPacket retrieves the most recently completed DSP/ML packet
+// ReadLatestProcessedPacket retrieves a safe copy of the most recently completed DSP/ML packet.
 func (w *RingBufferWriter) ReadLatestProcessedPacket(lastSeq *uint64) (*AudioFramePacket, bool) {
 	ring := w.handle.Ring
 	wHead := atomic.LoadUint64(&ring.WriteHead)
@@ -74,10 +90,15 @@ func (w *RingBufferWriter) ReadLatestProcessedPacket(lastSeq *uint64) (*AudioFra
 		slot := int(idx % uint64(RingCapacity))
 		pkt := &ring.Packets[slot]
 
-		// Require FLAG_ML_DONE or fallback to FLAG_DSP_DONE
-		if (pkt.Flags&(FlagMlDone|FlagDspDone)) != 0 && pkt.SequenceNumber > *lastSeq {
-			*lastSeq = pkt.SequenceNumber
-			return pkt, true
+		flags := atomic.LoadUint32(&pkt.Flags)
+		seq := atomic.LoadUint64(&pkt.SequenceNumber)
+		if (flags&(FlagMlDone|FlagDspDone)) != 0 && seq > *lastSeq {
+			copyPkt := *pkt
+			// Re-verify slot wasn't overwritten mid-copy
+			if atomic.LoadUint32(&pkt.Flags) != 0 && atomic.LoadUint64(&pkt.SequenceNumber) == seq {
+				*lastSeq = seq
+				return &copyPkt, true
+			}
 		}
 	}
 

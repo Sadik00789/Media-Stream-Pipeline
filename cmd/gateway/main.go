@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -85,6 +86,39 @@ func main() {
 	go broadcaster.StartBroadcasting(ctx)
 
 	// 4. HTTP Routes
+	mux := buildMux(cfg, hub, sessionHandler, audioWriter, videoWriter)
+
+	server := &http.Server{
+		Addr:    ":" + cfg.HTTPPort,
+		Handler: mux,
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("[Gateway] Server error: %v", err)
+		}
+	}()
+
+	log.Printf("[Gateway] WebRTC Gateway running at http://localhost:%s", cfg.HTTPPort)
+	<-stop
+
+	log.Println("[Gateway] Shutting down gracefully...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	_ = server.Shutdown(shutdownCtx)
+	log.Println("[Gateway] Server stopped.")
+}
+
+func buildMux(
+	cfg *config.Config,
+	hub *session.Hub,
+	sessionHandler *webrtc.SessionHandler,
+	audioWriter *ipc.RingBufferWriter,
+	videoWriter *ipc.VideoRingBufferWriter,
+) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	withCORS := func(next http.HandlerFunc) http.HandlerFunc {
@@ -111,32 +145,45 @@ func main() {
 		})
 	}))
 
-	// Latest Telemetry HTTP Polling Endpoint (Fallback)
-	var latestAudioSeq uint64 = 0
-	var latestVideoSeq uint64 = 0
+	// Latest Telemetry HTTP Polling Endpoint (Stateless & race-free per request)
 	mux.HandleFunc("/api/telemetry", withCORS(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+
+		var sinceAudioSeq uint64
+		if raw := r.URL.Query().Get("since_seq"); raw != "" {
+			if parsed, err := strconv.ParseUint(raw, 10, 64); err == nil {
+				sinceAudioSeq = parsed
+			}
+		}
+		var sinceVideoSeq uint64
+		if raw := r.URL.Query().Get("since_video_seq"); raw != "" {
+			if parsed, err := strconv.ParseUint(raw, 10, 64); err == nil {
+				sinceVideoSeq = parsed
+			}
+		}
 
 		var detections []ipc.DetectionBox
 		var videoSeq uint64 = 0
 		var videoTs uint64 = 0
 		var detCount uint32 = 0
 
-		if vPkt, ok := videoWriter.ReadLatestProcessedPacket(&latestVideoSeq); ok {
-			videoSeq = vPkt.SequenceNumber
-			videoTs = vPkt.TimestampNs
-			detCount = vPkt.DetectionCount
-			cnt := int(vPkt.DetectionCount)
-			if cnt > ipc.MaxDetections {
-				cnt = ipc.MaxDetections
-			}
-			detections = make([]ipc.DetectionBox, cnt)
-			for i := 0; i < cnt; i++ {
-				detections[i] = vPkt.Detections[i]
+		if videoWriter != nil {
+			if vPkt, ok := videoWriter.ReadLatestProcessedPacket(&sinceVideoSeq); ok {
+				videoSeq = vPkt.SequenceNumber
+				videoTs = vPkt.TimestampNs
+				detCount = vPkt.DetectionCount
+				cnt := int(vPkt.DetectionCount)
+				if cnt > ipc.MaxDetections {
+					cnt = ipc.MaxDetections
+				}
+				detections = make([]ipc.DetectionBox, cnt)
+				for i := 0; i < cnt; i++ {
+					detections[i] = vPkt.Detections[i]
+				}
 			}
 		}
 
-		if pkt, ok := audioWriter.ReadLatestProcessedPacket(&latestAudioSeq); ok {
+		if pkt, ok := audioWriter.ReadLatestProcessedPacket(&sinceAudioSeq); ok {
 			transcriptLen := bytes.IndexByte(pkt.MlTranscript[:], 0)
 			if transcriptLen < 0 {
 				transcriptLen = len(pkt.MlTranscript)
@@ -340,7 +387,7 @@ func main() {
 							if sdp, ok := msg["sdp"].(string); ok {
 								answer, _, err := sessionHandler.HandleOffer(sdp)
 								if err == nil {
-									_ = conn.WriteJSON(map[string]interface{}{
+									_ = hub.SendWebSocketJSON(conn, map[string]interface{}{
 										"type": "answer",
 										"sdp":  answer,
 									})
@@ -368,26 +415,5 @@ func main() {
 		mux.Handle("/", http.FileServer(http.Dir(cfg.WebStaticDir)))
 	}
 
-	server := &http.Server{
-		Addr:    ":" + cfg.HTTPPort,
-		Handler: mux,
-	}
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("[Gateway] Server error: %v", err)
-		}
-	}()
-
-	log.Printf("[Gateway] WebRTC Gateway running at http://localhost:%s", cfg.HTTPPort)
-	<-stop
-
-	log.Println("[Gateway] Shutting down gracefully...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	_ = server.Shutdown(shutdownCtx)
-	log.Println("[Gateway] Server stopped.")
+	return mux
 }

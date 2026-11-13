@@ -120,19 +120,19 @@ func (s *SessionHandler) HandleOffer(sdpOffer string) (string, *session.Peer, er
 	}
 
 	if err := pc.SetRemoteDescription(offer); err != nil {
-		peer.Close()
+		s.hub.RemovePeer(peerID)
 		return "", nil, err
 	}
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		peer.Close()
+		s.hub.RemovePeer(peerID)
 		return "", nil, err
 	}
 
 	gatherComplete := webrtc.GatheringCompletePromise(pc)
 	if err := pc.SetLocalDescription(answer); err != nil {
-		peer.Close()
+		s.hub.RemovePeer(peerID)
 		return "", nil, err
 	}
 
