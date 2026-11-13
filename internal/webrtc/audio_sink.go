@@ -10,11 +10,11 @@ import (
 )
 
 type AudioSink struct {
-	writer      *ipc.RingBufferWriter
-	sampleRate  int
-	frameSize   int
-	pcmBuffer   []float32
-	mu          sync.Mutex
+	writer     *ipc.RingBufferWriter
+	sampleRate int
+	frameSize  int
+	pcmBuffer  []float32
+	mu         sync.Mutex
 }
 
 func NewAudioSink(writer *ipc.RingBufferWriter, sampleRate, frameSize int) *AudioSink {
@@ -50,7 +50,7 @@ func (s *AudioSink) IngestAudioTrack(track *webrtc.TrackRemote) {
 		if len(samples) == 0 && len(payload) > 0 {
 			samples = make([]float32, 160) // 10ms at 16kHz
 			for i := range samples {
-				samples[i] = float32(math.Sin(float64(i) * 0.1)) * 0.1
+				samples[i] = float32(math.Sin(float64(i)*0.1)) * 0.1
 			}
 		}
 

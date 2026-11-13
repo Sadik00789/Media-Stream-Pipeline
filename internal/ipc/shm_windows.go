@@ -54,7 +54,9 @@ func openWinMmap(name string, size int) (*winMmap, error) {
 		return nil, fmt.Errorf("MapViewOfFile failed for %s: %w", shmPath, err)
 	}
 
-	data := unsafe.Slice((*byte)(unsafe.Pointer(viewAddr)), size)
+	// MapViewOfFile returns an OS unmanaged virtual address (not tracked by Go GC).
+	basePtr := *(*unsafe.Pointer)(unsafe.Pointer(&viewAddr))
+	data := unsafe.Slice((*byte)(basePtr), size)
 	return &winMmap{
 		shmPath:   shmPath,
 		file:      file,
@@ -97,7 +99,7 @@ func CreateOrOpenShm(name string) (*ShmHandle, error) {
 		return nil, err
 	}
 
-	ring := (*SharedMemoryRingBuffer)(unsafe.Pointer(m.viewAddr))
+	ring := (*SharedMemoryRingBuffer)(unsafe.Pointer(&m.data[0]))
 	if ring.Magic != ShmMagic {
 		ring.Magic = ShmMagic
 		ring.Version = ShmVersion

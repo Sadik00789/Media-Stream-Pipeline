@@ -98,4 +98,3 @@ func (w *VideoRingBufferWriter) ReadLatestProcessedPacket(lastSeq *uint64) (*Vid
 
 	return nil, false
 }
-

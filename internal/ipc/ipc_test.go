@@ -142,4 +142,3 @@ func TestConcurrentRingBufferWritersRaceFree(t *testing.T) {
 		t.Fatalf("expected WriteHead 400, got %d", atomic.LoadUint64(&handle.Ring.WriteHead))
 	}
 }
-

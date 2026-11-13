@@ -87,4 +87,3 @@ func TestHubConcurrentWebSocketWrites(t *testing.T) {
 	}
 	wg.Wait()
 }
-

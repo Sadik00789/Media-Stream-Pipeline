@@ -86,4 +86,3 @@ type SharedMemoryVideoRingBuffer struct {
 	OverrunCount   uint64
 	Packets        [VideoRingCapacity]VideoFramePacket
 }
-

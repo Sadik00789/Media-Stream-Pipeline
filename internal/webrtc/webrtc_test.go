@@ -171,4 +171,3 @@ func TestTelemetryBroadcaster(t *testing.T) {
 		t.Fatalf("unexpected telemetry payload: %+v", payload)
 	}
 }
-

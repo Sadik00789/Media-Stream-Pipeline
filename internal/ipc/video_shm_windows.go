@@ -23,7 +23,7 @@ func CreateOrOpenVideoShm(name string) (*VideoShmHandle, error) {
 		return nil, err
 	}
 
-	ring := (*SharedMemoryVideoRingBuffer)(unsafe.Pointer(m.viewAddr))
+	ring := (*SharedMemoryVideoRingBuffer)(unsafe.Pointer(&m.data[0]))
 	if ring.Magic != VideoShmMagic {
 		ring.Magic = VideoShmMagic
 		ring.Version = VideoShmVersion
@@ -62,4 +62,3 @@ func (s *VideoShmHandle) Unlink() error {
 	cleanName := strings.TrimPrefix(s.Name, "/")
 	return os.Remove(filepath.Join(os.TempDir(), cleanName))
 }
-
