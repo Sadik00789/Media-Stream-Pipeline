@@ -1,12 +1,12 @@
 module github.com/sadik/media-stream-pipeline
 
-go 1.22
+go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/webrtc/v3 v3.2.50
-	golang.org/x/sys v0.22.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
