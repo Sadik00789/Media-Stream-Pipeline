@@ -1,0 +1,166 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build artifacts for (e.g. v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-native:
+    name: Build Release Artifacts (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            exe: ""
+          - target: windows-amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            exe: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang llvm libclang-dev python3-dev python3-numpy
+
+      - name: Setup Python (Windows)
+        if: runner.os == 'Windows'
+        id: setup-py-win
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: python -m pip install --upgrade pip numpy
+
+      - name: Configure Python environment for PyO3
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            PY_HOME="$(cygpath -w "${{ steps.setup-py-win.outputs.python-path }}" | xargs dirname)"
+            echo "PYTHONHOME=${PY_HOME}" >> "$GITHUB_ENV"
+            echo "PYO3_PYTHON=${PY_HOME}\\python.exe" >> "$GITHUB_ENV"
+          else
+            echo "PYO3_PYTHON=/usr/bin/python3" >> "$GITHUB_ENV"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build C11 DSP library
+        run: |
+          cmake -S dsp -B dsp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build dsp/build --config Release
+
+      - name: Build Rust ml-worker (release)
+        run: cargo build --manifest-path crates/Cargo.toml --release --bin ml-worker
+
+      - name: Build Go gateway and cli-benchmark
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -ldflags="-s -w" -o dist-release/gateway-${{ matrix.target }}${{ matrix.exe }} ./cmd/gateway
+          go build -trimpath -ldflags="-s -w" -o dist-release/cli-benchmark-${{ matrix.target }}${{ matrix.exe }} ./cmd/cli-benchmark
+
+      - name: Stage platform bundle
+        shell: bash
+        run: |
+          mkdir -p dist-release
+          cp "crates/target/release/ml-worker${{ matrix.exe }}" "dist-release/ml-worker-${{ matrix.target }}${{ matrix.exe }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dsp/build/Release/dsp_core.lib dist-release/dsp_core-${{ matrix.target }}.lib
+          else
+            cp dsp/build/libdsp_core.a dist-release/libdsp_core-${{ matrix.target }}.a
+          fi
+          tar -czf "media-stream-pipeline-${{ matrix.target }}.tar.gz" -C dist-release .
+
+      - name: Upload platform archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: media-stream-pipeline-${{ matrix.target }}.tar.gz
+
+  build-universal:
+    name: Build Python Package & Web Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Python sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build python --outdir release-assets
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build Web Dashboard bundle
+        run: |
+          cd web
+          npm install
+          npm run build
+          tar -czf ../release-assets/media-stream-web-dist.tar.gz -C dist .
+
+      - name: Upload universal artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-universal
+          path: release-assets/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-native, build-universal]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect assets and compute SHA256SUMS
+        shell: bash
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec mv -t release-files {} +
+          (cd release-files && sha256sum * > SHA256SUMS.txt)
+          ls -lh release-files
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: Release ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: release-files/*
