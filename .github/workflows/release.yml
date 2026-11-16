@@ -53,16 +53,16 @@ jobs:
         if: runner.os == 'Windows'
         run: python -m pip install --upgrade pip numpy
 
-      - name: Configure Python environment for PyO3
-        shell: bash
+      - name: Configure Python environment for PyO3 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            PY_HOME="$(cygpath -w "${{ steps.setup-py-win.outputs.python-path }}" | xargs dirname)"
-            echo "PYTHONHOME=${PY_HOME}" >> "$GITHUB_ENV"
-            echo "PYO3_PYTHON=${PY_HOME}\\python.exe" >> "$GITHUB_ENV"
-          else
-            echo "PYO3_PYTHON=/usr/bin/python3" >> "$GITHUB_ENV"
-          fi
+          Add-Content -Path $env:GITHUB_ENV -Value "PYTHONHOME=$env:pythonLocation"
+          Add-Content -Path $env:GITHUB_ENV -Value "PYO3_PYTHON=${{ steps.setup-py-win.outputs.python-path }}"
+
+      - name: Configure Python environment for PyO3 (Linux)
+        if: runner.os == 'Linux'
+        run: echo "PYO3_PYTHON=/usr/bin/python3" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
 

@@ -8,10 +8,17 @@ CMakeLists.txt linguist-vendored=true
 docs/* linguist-documentation=true
 benchmarks/datasets/* linguist-vendored=true
 
-# Ensure Core Source Files are accurately detected
-*.rs linguist-detectable=true
-*.c linguist-detectable=true
-*.h linguist-detectable=true
-*.go linguist-detectable=true
-*.py linguist-detectable=true
-*.ts linguist-detectable=true
+# Ensure Core Source Files are accurately detected and keep LF line endings across OSes
+*.rs text eol=lf linguist-detectable=true
+*.c text eol=lf linguist-detectable=true
+*.h text eol=lf linguist-detectable=true
+*.go text eol=lf linguist-detectable=true
+*.py text eol=lf linguist-detectable=true
+*.ts text eol=lf linguist-detectable=true
+*.sh text eol=lf linguist-vendored=true
+*.yml text eol=lf
+*.yaml text eol=lf
+Cargo.toml text eol=lf
+CMakeLists.txt text eol=lf linguist-vendored=true
+go.mod text eol=lf
+go.sum text eol=lf
