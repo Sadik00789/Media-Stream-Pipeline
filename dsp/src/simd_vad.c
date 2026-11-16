@@ -1,8 +1,15 @@
 #include "simd_vad.h"
 #include <math.h>
+#include <string.h>
 #if defined(__AVX2__) || defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 #endif
+
+static int dsp_is_finite_f32(float val) {
+    uint32_t bits = 0;
+    memcpy(&bits, &val, sizeof(bits));
+    return (bits & 0x7F800000u) != 0x7F800000u;
+}
 
 #define SAMPLES 512
 
@@ -51,10 +58,10 @@ uint32_t dsp_vad_decision(float energy, float base_threshold, float* out_confide
         dsp_vad_init();
     }
 
-    if (!isfinite(energy) || energy < 0.0f) {
+    if (!dsp_is_finite_f32(energy) || energy < 0.0f) {
         energy = 0.0f;
     }
-    if (!isfinite(base_threshold) || base_threshold < 0.0f) {
+    if (!dsp_is_finite_f32(base_threshold) || base_threshold < 0.0f) {
         base_threshold = 0.015f;
     }
 
