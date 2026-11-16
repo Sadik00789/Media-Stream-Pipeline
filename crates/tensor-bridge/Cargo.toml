@@ -7,7 +7,7 @@ edition = "2024"
 pyo3 = { version = "0.22", features = ["auto-initialize"] }
 numpy = "0.22"
 libc = "0.2"
-thiserror = "1.0"
+thiserror = "2.0"
 
 [build-dependencies]
 bindgen = "0.69"
