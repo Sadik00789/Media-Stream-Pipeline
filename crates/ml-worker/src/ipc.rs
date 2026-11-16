@@ -80,11 +80,9 @@ mod platform {
 
     impl Drop for MmapRegion {
         fn drop(&mut self) {
-            if !self.ptr.is_null() {
-                if let Some(non_null) = NonNull::new(self.ptr) {
-                    unsafe {
-                        let _ = munmap(non_null, self.size);
-                    }
+            if let Some(non_null) = NonNull::new(self.ptr) {
+                unsafe {
+                    let _ = munmap(non_null, self.size);
                 }
             }
         }

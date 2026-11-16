@@ -112,10 +112,9 @@ impl VideoPipeline {
             let count = filtered.len().min(MAX_DETECTIONS as usize);
             packet.detection_count = count as u32;
 
-            packet.detections[..count].copy_from_slice(&filtered[..count]);
-            for i in count..(MAX_DETECTIONS as usize) {
-                packet.detections[i] = DetectionBox::default();
-            }
+            let mut detections = [DetectionBox::default(); MAX_DETECTIONS as usize];
+            detections[..count].copy_from_slice(&filtered[..count]);
+            packet.detections = detections;
 
             packet.flags |= FLAG_ML_DONE;
         } else {
@@ -142,10 +141,11 @@ mod tests {
             sample_count: FRAME_SAMPLES,
             ..Default::default()
         };
-        for i in 0..(FRAME_SAMPLES as usize) {
-            pkt.pcm_data[i] =
-                0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
+        let mut pcm = [0.0f32; FRAME_SAMPLES as usize];
+        for (i, sample) in pcm.iter_mut().enumerate() {
+            *sample = 0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
         }
+        pkt.pcm_data = pcm;
 
         pipeline.process_packet(&mut pkt);
         let flags = { pkt.flags };

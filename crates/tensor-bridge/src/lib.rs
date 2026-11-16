@@ -166,10 +166,11 @@ mod tests {
             sample_count: FRAME_SAMPLES,
             ..Default::default()
         };
-        for i in 0..(FRAME_SAMPLES as usize) {
-            packet.pcm_data[i] =
-                0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
+        let mut pcm = [0.0f32; FRAME_SAMPLES as usize];
+        for (i, sample) in pcm.iter_mut().enumerate() {
+            *sample = 0.5 * ((i as f32) * 2.0 * std::f32::consts::PI * 1000.0 / 16000.0).sin();
         }
+        packet.pcm_data = pcm;
         engine.process_frame(&mut packet);
         let flags = { packet.flags };
         assert_ne!(flags & ffi::FLAG_DSP_DONE, 0);
