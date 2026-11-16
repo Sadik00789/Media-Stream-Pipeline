@@ -177,21 +177,21 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Gateway image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.gateway
           push: false
 
       - name: Build Web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.web
           push: false
 
       - name: Build Worker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.worker
